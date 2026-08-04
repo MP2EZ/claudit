@@ -1,6 +1,6 @@
 ---
 description: Multi-dimensional codebase audit across performance, security, accessibility, test coverage, architecture, TypeScript safety, and design system compliance
-argument-hint: "[path] [--diff <branch>] [--staged] [--fast] [--save] [--perf] [--security] [--a11y] [--test] [--arch] [--ts] [--deps] [--resilience] [--ux] [--bloat] [--all] [--no-split] [--max-agents <N>] [--<dim>=<N>]"
+argument-hint: "[path] [--diff <branch>] [--staged] [--fast] [--save] [--no-ignore] [--perf] [--security] [--a11y] [--test] [--arch] [--ts] [--deps] [--resilience] [--ux] [--bloat] [--all] [--no-split] [--max-agents <N>] [--<dim>=<N>]"
 ---
 
 # Codebase Audit
@@ -17,6 +17,7 @@ Parse the following from arguments:
 - **`--staged`**: Audit only staged changes (runs `git diff --cached`)
 - **`--fast`**: Use sonnet model for all agents (faster, less depth)
 - **`--save`**: Write report to `.audit-report.md` in the target directory
+- **`--no-ignore`**: Ignore `.audit-ignore.md` — report accepted patterns as if they were never accepted. Use when a re-audit needs to see everything, or to check whether accepted patterns still deserve it.
 - **`--all`**: Run ALL agents (default 6 + all optional)
 
 **Parallelism flags** — control within-dimension agent allocation (see Phase 1b):
@@ -55,9 +56,10 @@ If no path, `--diff`, or `--staged` is specified, auto-detect:
 2. If using git diff, run the diff to get the list of changed files
 3. If using a path, enumerate the files in scope
 4. Detect the project stack from config files (package.json, tsconfig.json, Cargo.toml, requirements.txt, go.mod, etc.)
-5. Briefly state the resolved scope and detected stack to the user before proceeding
+5. Read `.audit-ignore.md` from the repo root if it exists (skip entirely if `--no-ignore`). Each entry is a pattern the user reviewed and accepted, written by a previous run's Phase 5. Keep them grouped by dimension — Phase 2 passes each dimension only its own.
+6. Briefly state the resolved scope and detected stack to the user before proceeding
 
-**Output to user**: "Auditing [scope description] — [N files, stack detected] — launching [M] agents..." (where M is the total after Phase 1b allocation, e.g. "launching 7 agents (perf×3, security×2, test×1, ts×1)").
+**Output to user**: "Auditing [scope description] — [N files, stack detected] — launching [M] agents..." (where M is the total after Phase 1b allocation, e.g. "launching 7 agents (perf×3, security×2, test×1, ts×1)"). Append "— [K] accepted patterns loaded" when `.audit-ignore.md` had entries, or "— .audit-ignore.md bypassed" under `--no-ignore`.
 
 ## Phase 1b: Allocate Agents Within Dimensions
 
@@ -161,6 +163,12 @@ You are running as part of a /audit command. Your task is to AUDIT (analyze and 
   • file-chunk: This is slice [X] of [N] for this dimension. Analyze ONLY the files listed in Scope above — other slices cover the rest. Do not report on files outside your slice.
   • sub-lens: **Lens**: [SUB-LENS]. You see the full relevant scope, but report ONLY findings that fall under this lens — sibling agents cover the other lenses.
 
+[ACCEPTED PATTERNS — include only when .audit-ignore.md has entries for this dimension:]
+  These patterns were reviewed and deliberately accepted. Do NOT report them:
+  [the matching entries, verbatim]
+  If the stated reason no longer holds, report ONE Info finding explaining why the
+  acceptance is stale — do not report every instance of the pattern.
+
 Read and analyze all code in scope. Apply your full domain expertise as an audit lens.
 
 [DIMENSION-SPECIFIC FOCUS — see below]
@@ -232,8 +240,9 @@ After all agents return, merge findings into a single report. When a dimension r
 1. **Within each dimension first**: combine that dimension's slices into one set. Dedup at boundaries — drop duplicate `file:line` findings that adjacent file-chunks or overlapping sub-lenses both reported, keeping the higher-severity/confidence one. Renumber the survivors to a single flat `[PREFIX]-NN` sequence (dropping the slice index, e.g. `PERF-2-03` → `PERF-07`).
    - **Consolidation tier** — if a dimension ran **more than 4 slices**, do this within-dimension merge with a dedicated sub-agent instead of inline, so the orchestrator's context isn't flooded by every slice's raw findings on large audits. Spawn one consolidator per such dimension (in parallel), passing it that dimension's slice outputs and these dedup+renumber rules; it returns the merged, flat-numbered `[PREFIX]` finding list. Dimensions with ≤4 slices are merged inline.
 2. **Then across dimensions**: if two *different* dimensions flagged the same file:line for overlapping reasons, merge into the higher-severity finding and note both dimensions.
-3. **Sort by severity**: Critical first, then Warning, then Info. Within each severity, sort by confidence (highest first)
-4. **Generate summary table**
+3. **Ignore safety net**: drop any surviving finding matching an `.audit-ignore.md` entry — agents occasionally report them despite the prompt. Keep the count. Skip under `--no-ignore`. A finding the agent explicitly flagged as a *stale acceptance* survives this filter; that is the point of it.
+4. **Sort by severity**: Critical first, then Warning, then Info. Within each severity, sort by confidence (highest first)
+5. **Generate summary table**
 
 ### Report Format
 
@@ -243,6 +252,7 @@ After all agents return, merge findings into a single report. When a dimension r
 **Stack**: [detected stack]
 **Agents**: [dimensions run, with per-dimension agent counts when split — e.g. performance×3, security×2, test×1]
 **Date**: [current date]
+**Suppressed**: [N] findings matched `.audit-ignore.md`   ← omit this line when N is 0 or `--no-ignore` was set
 
 ---
 
@@ -280,5 +290,82 @@ Health: pass (0 critical, <=2 warnings) | warn (1+ critical or 3+ warnings) | fa
 
 1. Display the full report inline in the conversation
 2. If `--save` flag was provided, write the report to `.audit-report.md` in the target directory (or repo root)
-3. If there are critical findings, end with: "Found [N] critical issues that should be addressed before merging."
-4. If clean, end with: "No critical issues found. [N] warnings worth reviewing."
+3. If any findings were suppressed by `.audit-ignore.md`, say so with the count and the dimensions affected — suppression is never invisible. Mention `--no-ignore` once.
+4. If there are critical findings, end with: "Found [N] critical issues that should be addressed before merging."
+5. If clean, end with: "No critical issues found. [N] warnings worth reviewing."
+
+## Phase 5: Retro (conditional — most runs skip this)
+
+Follow `~/.claude/protocols/learning-loop.md`. Below is only what is specific to `/audit`.
+
+### Triggers — check the counters, do not introspect
+
+Fire only when one of these crossed its threshold. All five are computable from what
+Phases 1b–3 already tracked; none need a judgment call about how the run *felt*.
+
+| # | Trigger | Threshold | What it indicts |
+|---|---------|-----------|-----------------|
+| 1 | `--max-agents` capped demand | trimmed >= 50% of demanded agents | the default 16, or the ~4k chunk budget, is miscalibrated for this repo's shape |
+| 2 | A slice returned zero findings | while holding >= 1,000 LOC of its dimension's relevant set | Phase 1b Step 1's relevant-set rule, or the partition axis picked in Step 3 |
+| 3 | Duplicates dropped at within-dimension merge | >= 3 in one dimension | the file-chunk partition cut a module seam — Step 3's directory rule failed |
+| 4 | An agent broke its contract | any occurrence: findings outside its file-chunk, findings outside its lens, or output not matching the required format | the Phase 2 prompt template is ambiguous |
+| 5 | The user dismissed findings as intentional or already-known | >= 2 within one dimension, this session | route it — see below |
+
+Nothing crossed a threshold → say nothing. The command ends at Phase 4.
+
+Trigger 5 normally arrives *after* the report, once the user has read it. Fire Phase 5
+then, not at the moment of output — a retro run before any reaction has no signal to learn from.
+
+### Routing
+
+Triggers 1–4 are always method lessons. Each routes to the phase that owns the broken rule:
+
+| Trigger | Destination in this file |
+|---|---|
+| 1 — allocation | Phase 1b, Step 2 (agent count / chunk budget) |
+| 2 — empty slice | Phase 1b, Step 1 (relevant set) or Step 3 (partition axis) |
+| 3 — dedup churn | Phase 1b Step 3's module-seam rule, or Phase 3's merge rules |
+| 4 — contract break | Phase 2's Agent Prompt Template |
+
+Trigger 5 needs the router:
+
+| The dismissals were about… | Destination |
+|---|---|
+| a convention of **this repo** — generated files, a grandfathered legacy directory, a deliberate house pattern | `.audit-ignore.md`. One entry per pattern. No skill edit. |
+| a rule that would misfire on **any** repo | that dimension's entry under **Dimension-Specific Focus Instructions** in this file |
+
+**Never edit `~/.claude/agents/*.md` from an audit retro.** Seven dimensions (perf,
+security, a11y, test, arch, ts, ux) run on global agents shared with all other work —
+narrowing one to kill an audit false positive changes behavior everywhere else it is
+used. Audit-only corrections belong in this file's focus instructions, which are appended
+to the agent's prompt at launch and affect nothing outside this command.
+
+Only `m:bloat-auditor`, `m:deps-auditor`, and `m:resilience-auditor` are owned by this
+plugin and may be edited directly at `agents/*.md`.
+
+### Writing `.audit-ignore.md`
+
+Repo root, one entry per line, newest last:
+
+```
+- `<glob>` · <DIM> · <pattern> — <why it is acceptable>. <YYYY-MM-DD>
+```
+
+Examples:
+
+```
+- `src/generated/**` · TS · `any` in emitted types — output of openapi-typescript, regenerated on build. 2026-08-03
+- `app/legacy/**` · UX · hardcoded hex colors — pre-design-system, frozen until the rewrite. 2026-08-03
+```
+
+Rules for entries:
+- **Scope every entry with a glob.** An unscoped entry silences the whole repo forever.
+- **The reason must be falsifiable** — a later run re-checks whether it still holds. "This
+  is fine" is not a reason; "regenerated on build" is.
+- Propose entries under the same approval gate as a skill edit: show them, wait, then write.
+
+### Never capture
+
+The findings themselves. The report is the output; `.audit-ignore.md` records only the
+*pattern* accepted and *why*. An entry reading "SEC-03 was a false positive" has taught a
+future run nothing it can use.
