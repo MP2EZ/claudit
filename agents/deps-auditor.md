@@ -1,7 +1,7 @@
 ---
 name: deps-auditor
 description: Audits dependency health including outdated packages, known CVEs, unused dependencies, deprecated packages, and version pinning issues. Activated by /audit --deps or --all.
-tools: Glob, Grep, LS, Read, BashOutput, WebSearch, WebFetch
+tools: Glob, Grep, LS, Read, Write, Bash, WebSearch, WebFetch
 model: opus
 color: magenta
 ---
@@ -49,23 +49,6 @@ Surface real dependency risks — not every outdated package, but the ones that 
 5. For critical findings, verify with web search for CVE details
 6. Rate confidence based on verified impact, not theoretical risk
 
-## Output Format
+## Output
 
-## Dependency Health Findings
-
-### Critical
-- **DEPS-XX** (confidence: [0-100]) `package@version` — [description]
-  → [specific fix: upgrade to version X, replace with Y, remove]
-
-### Warning
-- **DEPS-XX** (confidence: [0-100]) `package@version` — [description]
-  → [recommendation]
-
-### Info
-- **DEPS-XX** (confidence: [0-100]) `package@version` — [description]
-  → [recommendation]
-
-### Summary
-[2-3 sentence summary of dependency health]
-
-Only report findings with confidence >= 75.
+Follow the audit contract at the end of your brief: it defines the findings file format, the ID scheme, and your one-line reply.

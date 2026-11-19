@@ -1,7 +1,7 @@
 ---
 name: resilience-auditor
 description: Audits code for error handling gaps, missing error boundaries, unhandled promise rejections, network failure handling, and resilience patterns. Activated by /audit --resilience or --all.
-tools: Glob, Grep, LS, Read, BashOutput, WebSearch, WebFetch
+tools: Glob, Grep, LS, Read, Write, WebSearch, WebFetch
 model: opus
 color: cyan
 ---
@@ -57,23 +57,6 @@ Find the failure modes that will hit real users — network drops, unexpected AP
 3. For each finding, assess likelihood in real-world conditions (mobile network, slow API, user navigating quickly)
 4. Rate confidence based on how likely the failure mode is to occur in production
 
-## Output Format
+## Output
 
-## Resilience Findings
-
-### Critical
-- **RES-XX** (confidence: [0-100]) `file:line` — [description]
-  → [specific fix recommendation]
-
-### Warning
-- **RES-XX** (confidence: [0-100]) `file:line` — [description]
-  → [recommendation]
-
-### Info
-- **RES-XX** (confidence: [0-100]) `file:line` — [description]
-  → [recommendation]
-
-### Summary
-[2-3 sentence summary of resilience posture]
-
-Only report findings with confidence >= 75.
+Follow the audit contract at the end of your brief: it defines the findings file format, the ID scheme, and your one-line reply.
