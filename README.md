@@ -23,7 +23,7 @@
 Requires `python3` on your PATH.
 
 ```
-/plugin marketplace add <owner>/<repo>
+/plugin marketplace add MP2EZ/claude-audit
 /plugin install audit@audit-plugin
 ```
 
