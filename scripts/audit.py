@@ -33,15 +33,15 @@ class Dim(NamedTuple):
 
 
 DIMS = {
-    "perf": Dim("PERF", "performance", "Performance", True),
-    "security": Dim("SEC", "security", "Security", True),
-    "a11y": Dim("A11Y", "accessibility", "Accessibility", True),
-    "test": Dim("TEST", "test", "Test Coverage", True),
-    "arch": Dim("ARCH", "architect", "Architecture", True),
-    "ts": Dim("TS", "typescript", "TypeScript", True),
+    "perf": Dim("PERF", "m:perf-auditor", "Performance", True),
+    "security": Dim("SEC", "m:security-auditor", "Security", True),
+    "a11y": Dim("A11Y", "m:a11y-auditor", "Accessibility", True),
+    "test": Dim("TEST", "m:test-auditor", "Test Coverage", True),
+    "arch": Dim("ARCH", "m:arch-auditor", "Architecture", True),
+    "ts": Dim("TS", "m:ts-auditor", "TypeScript", True),
     "deps": Dim("DEPS", "m:deps-auditor", "Dependency Health", False),
     "resilience": Dim("RES", "m:resilience-auditor", "Resilience", False),
-    "ux": Dim("UX", "ux", "UX / Design System", False),
+    "ux": Dim("UX", "m:ux-auditor", "UX / Design System", False),
     "bloat": Dim("BLOAT", "m:bloat-auditor", "Code Bloat", False),
     "analytics": Dim("ANLT", "m:analytics-auditor", "Analytics Coverage", False),
 }
@@ -49,8 +49,6 @@ PREFIX_TO_DIM = {d.prefix: k for k, d in DIMS.items()}
 DIM_ALIASES = {**PREFIX_TO_DIM, **{k.upper(): k for k in DIMS},
                "PERFORMANCE": "perf", "ACCESSIBILITY": "a11y", "TYPESCRIPT": "ts",
                "ARCHITECTURE": "arch", "RESILIENCE": "resilience", "ANALYTICS": "analytics"}
-# Dimensions whose focus lives in audit/focus/<key>.md (global agents); m: agents carry their own.
-FOCUS_FILES = {"perf", "security", "a11y", "test", "arch", "ts", "ux"}
 
 LENSES = {
     "perf": ["render", "algorithmic complexity", "network/N+1 & waterfalls"],
@@ -442,9 +440,6 @@ def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, cont
         lines += [f"- {p}" for p in s["files"]]
     if ignore.get(dim):
         lines += ["", "## Accepted patterns: do not report", ""] + [e for _, e in ignore[dim]]
-    focus = PLUGIN_ROOT / "audit" / "focus" / f"{dim}.md"
-    if dim in FOCUS_FILES and focus.exists():
-        lines += ["", focus.read_text().strip()]
     lines += ["", contract]
     path = run / "briefs" / f"{s['id']}.md"
     path.write_text("\n".join(lines) + "\n")

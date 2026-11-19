@@ -19,7 +19,7 @@ On `USAGE ERROR`, show it with the argument hint and stop. Otherwise relay the `
 
 ## 2. Launch
 
-Each `AGENT <id> | <subagent_type> | <model> | <description> | <prompt>` line is one Agent call. Make all of them in a single message, passing the fields through unchanged. Add nothing to the prompt: the brief it points to holds scope, partition, focus, accepted patterns, and the output contract.
+Each `AGENT <id> | <subagent_type> | <model> | <description> | <prompt>` line is one Agent call. Make all of them in a single message, passing the fields through unchanged. Add nothing to the prompt: the brief it points to holds scope, partition, accepted patterns, and the output contract.
 
 Each agent writes `.audit-run/findings/<id>.md` and replies with one line. If an agent returns its findings inline instead, Write them to that path unchanged. If an agent fails, re-launch it once.
 
