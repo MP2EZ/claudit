@@ -1,6 +1,13 @@
 # /audit retro
 
-Follow `~/.claude/protocols/learning-loop.md`. This file holds only what's specific to `/audit`. You got here because `audit.py merge` printed a `RETRO` line, or because the user dismissed findings (trigger 5).
+If `~/.claude/protocols/learning-loop.md` exists, follow it. Otherwise follow the ground rules below. This file holds only what's specific to `/audit`. You got here because `audit.py merge` printed a `RETRO` line, or because the user dismissed findings (trigger 5).
+
+## Ground rules
+
+- **Default is silence.** Fire only on the triggers below; a manufactured lesson makes the audit worse.
+- **Never a lesson:** the findings themselves, or a single instance. Require two in one run, or an explicit statement from the user.
+- **One method lesson per run.** Draft the smallest edit (~4 lines, amend before appending), show it as a diff with one line on which future runs it helps, and apply exactly the approved text. Never auto-apply.
+- **On decline,** drop it and don't re-propose it this session. If `~/.claude/protocols/declined.md` exists, check it before proposing and append declined lessons to it.
 
 ## Triggers
 
@@ -18,7 +25,7 @@ Trigger 5 usually arrives *after* the report, once the user has read it. Fire th
 
 ## Routing
 
-Paths are relative to the plugin root (`~/.claude/local-plugins/m`, the source; the cache copy is regenerated on update).
+Paths are relative to the plugin's source checkout (the marketplace directory you installed from), not `${CLAUDE_PLUGIN_ROOT}`: the cache copy under `~/.claude/plugins/cache/` is overwritten on update. If you can't find the source checkout, show the diff and let the user apply it.
 
 | Trigger | Destination |
 |---|---|
@@ -34,11 +41,9 @@ For trigger 5:
 | The dismissals were about… | Destination |
 |---|---|
 | a convention of **this repo** (generated files, a grandfathered legacy directory, a deliberate house pattern) | `.audit-ignore.md`. One entry per pattern. No skill edit. |
-| a rule that would misfire on **any** repo | `audit/focus/<dim>.md` for perf, security, a11y, test, arch, ts, ux; `agents/<name>.md` for deps, resilience, bloat, analytics |
+| a rule that would misfire on **any** repo | `agents/<dim>-auditor.md` |
 
-**Never edit `~/.claude/agents/*.md` from an audit retro.** Seven dimensions (perf, security, a11y, test, arch, ts, ux) run on global agents shared with all other work. Narrowing one to kill an audit false positive changes its behavior everywhere else. Audit-only corrections go in `audit/focus/`, which is injected into the brief and affects nothing outside this command.
-
-Only `m:bloat-auditor`, `m:deps-auditor`, `m:resilience-auditor`, and `m:analytics-auditor` are owned by this plugin, so only they may be edited directly at `agents/*.md`.
+Every dimension runs on an agent this plugin owns (`agents/*-auditor.md`), so edits there affect only `/audit`. Never edit agents outside the plugin from an audit retro.
 
 ## Writing `.audit-ignore.md`
 
