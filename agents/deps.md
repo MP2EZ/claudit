@@ -1,5 +1,5 @@
 ---
-name: deps-auditor
+name: deps
 description: Audits dependency health including outdated packages, known CVEs, unused dependencies, deprecated packages, and version pinning issues. Activated by /audit --deps or --all.
 tools: Glob, Grep, LS, Read, Write, Bash, WebSearch, WebFetch
 model: opus

@@ -1,5 +1,5 @@
 ---
-name: bloat-auditor
+name: bloat
 description: Audits code for AI-generated bloat at both the file level (unnecessary comments, premature abstractions, defensive validation for impossible cases, backwards-compat shims, half-finished implementations) and the repo level (duplicated implementations, orphan modules, dead exports, indirection chains, over-parameterization, test bloat). Activated by /audit --bloat or --all.
 tools: Glob, Grep, LS, Read, Write
 model: sonnet

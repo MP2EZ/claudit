@@ -1,5 +1,5 @@
 ---
-name: security-auditor
+name: security
 description: Audits code for security vulnerabilities — OWASP Top 10, injection, auth/authz gaps, secrets in code, input validation, data exposure, insecure defaults. Activated by /audit --security or --all.
 tools: Glob, Grep, LS, Read, Write
 model: opus

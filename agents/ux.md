@@ -1,5 +1,5 @@
 ---
-name: ux-auditor
+name: ux
 description: Audits UI code for design-system compliance — hardcoded tokens, one-off components that bypass the system, ad-hoc layout, partial adoption. Activated by /audit --ux or --all.
 tools: Glob, Grep, LS, Read, Write
 model: opus

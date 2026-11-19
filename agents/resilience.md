@@ -1,5 +1,5 @@
 ---
-name: resilience-auditor
+name: resilience
 description: Audits code for error handling gaps, missing error boundaries, unhandled promise rejections, network failure handling, and resilience patterns. Activated by /audit --resilience or --all.
 tools: Glob, Grep, LS, Read, Write, WebSearch, WebFetch
 model: opus

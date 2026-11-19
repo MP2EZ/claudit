@@ -33,17 +33,17 @@ class Dim(NamedTuple):
 
 
 DIMS = {
-    "perf": Dim("PERF", "m:perf-auditor", "Performance", True),
-    "security": Dim("SEC", "m:security-auditor", "Security", True),
-    "a11y": Dim("A11Y", "m:a11y-auditor", "Accessibility", True),
-    "test": Dim("TEST", "m:test-auditor", "Test Coverage", True),
-    "arch": Dim("ARCH", "m:arch-auditor", "Architecture", True),
-    "ts": Dim("TS", "m:ts-auditor", "TypeScript", True),
-    "deps": Dim("DEPS", "m:deps-auditor", "Dependency Health", False),
-    "resilience": Dim("RES", "m:resilience-auditor", "Resilience", False),
-    "ux": Dim("UX", "m:ux-auditor", "UX / Design System", False),
-    "bloat": Dim("BLOAT", "m:bloat-auditor", "Code Bloat", False),
-    "analytics": Dim("ANLT", "m:analytics-auditor", "Analytics Coverage", False),
+    "perf": Dim("PERF", "audit:perf", "Performance", True),
+    "security": Dim("SEC", "audit:security", "Security", True),
+    "a11y": Dim("A11Y", "audit:a11y", "Accessibility", True),
+    "test": Dim("TEST", "audit:test", "Test Coverage", True),
+    "arch": Dim("ARCH", "audit:arch", "Architecture", True),
+    "ts": Dim("TS", "audit:ts", "TypeScript", True),
+    "deps": Dim("DEPS", "audit:deps", "Dependency Health", False),
+    "resilience": Dim("RES", "audit:resilience", "Resilience", False),
+    "ux": Dim("UX", "audit:ux", "UX / Design System", False),
+    "bloat": Dim("BLOAT", "audit:bloat", "Code Bloat", False),
+    "analytics": Dim("ANLT", "audit:analytics", "Analytics Coverage", False),
 }
 PREFIX_TO_DIM = {d.prefix: k for k, d in DIMS.items()}
 DIM_ALIASES = {**PREFIX_TO_DIM, **{k.upper(): k for k in DIMS},

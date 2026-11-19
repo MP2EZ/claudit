@@ -1,4 +1,4 @@
-# m — `/audit` for Claude Code
+# audit — `/audit` for Claude Code
 
 `/audit` audits a codebase in parallel across up to 11 dimensions, dedups the findings, and writes one report.
 
@@ -24,10 +24,10 @@ Requires `python3` on your PATH.
 
 ```
 /plugin marketplace add <owner>/<repo>
-/plugin install m@m-audit
+/plugin install audit@audit-plugin
 ```
 
-Restart Claude Code, then run `/m:audit` (or `/audit`) from a project directory.
+Restart Claude Code, then run `/audit` (or `/audit:audit` if another plugin also has an `audit` command) from a project directory.
 
 ## Usage
 

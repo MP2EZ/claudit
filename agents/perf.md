@@ -1,5 +1,5 @@
 ---
-name: perf-auditor
+name: perf
 description: Audits code for performance problems — render cost, algorithmic complexity, memory leaks, bundle impact, N+1 queries, request waterfalls, missing caching. Activated by /audit --perf or --all.
 tools: Glob, Grep, LS, Read, Write
 model: opus

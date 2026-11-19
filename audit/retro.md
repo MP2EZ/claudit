@@ -41,9 +41,9 @@ For trigger 5:
 | The dismissals were about… | Destination |
 |---|---|
 | a convention of **this repo** (generated files, a grandfathered legacy directory, a deliberate house pattern) | `.audit-ignore.md`. One entry per pattern. No skill edit. |
-| a rule that would misfire on **any** repo | `agents/<dim>-auditor.md` |
+| a rule that would misfire on **any** repo | `agents/<dim>.md` |
 
-Every dimension runs on an agent this plugin owns (`agents/*-auditor.md`), so edits there affect only `/audit`. Never edit agents outside the plugin from an audit retro.
+Every dimension runs on an agent this plugin owns (`agents/*.md`), so edits there affect only `/audit`. Never edit agents outside the plugin from an audit retro.
 
 ## Writing `.audit-ignore.md`
 

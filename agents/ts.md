@@ -1,5 +1,5 @@
 ---
-name: ts-auditor
+name: ts
 description: Audits TypeScript type safety — any usage, unsafe assertions, missing strict flags, unsound narrowing, overly broad types, loose generics. Activated by /audit --ts or --all.
 tools: Glob, Grep, LS, Read, Write
 model: opus

@@ -1,5 +1,5 @@
 ---
-name: analytics-auditor
+name: analytics
 description: Audits analytics/event instrumentation — coverage gaps against product, marketing, and lifecycle competencies, plus tracking correctness (identity stitching, naming drift, PII leakage, double-firing). Activated by /audit --analytics or --all.
 tools: Glob, Grep, LS, Read, Write
 model: sonnet

@@ -1,5 +1,5 @@
 ---
-name: arch-auditor
+name: arch
 description: Audits code architecture — coupling, circular dependencies, complexity hotspots, god files, leaky abstractions, mixed concerns, hidden module dependencies. Activated by /audit --arch or --all.
 tools: Glob, Grep, LS, Read, Write, Bash
 model: opus

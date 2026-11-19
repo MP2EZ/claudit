@@ -414,10 +414,10 @@ class ScopeTest(unittest.TestCase):
 class BundledAgentsTest(unittest.TestCase):
     def test_every_plugin_agent_has_a_definition(self):
         for key, d in audit.DIMS.items():
-            self.assertTrue(d.agent.startswith("m:"), f"{key} uses a non-bundled agent {d.agent}")
-            path = audit.PLUGIN_ROOT / "agents" / f"{d.agent[2:]}.md"
+            self.assertTrue(d.agent.startswith("audit:"), f"{key} uses a non-bundled agent {d.agent}")
+            path = audit.PLUGIN_ROOT / "agents" / f"{d.agent[6:]}.md"
             self.assertTrue(path.exists(), f"{key}: missing {path}")
-            self.assertIn(f"name: {d.agent[2:]}\n", path.read_text())
+            self.assertIn(f"name: {d.agent[6:]}\n", path.read_text())
 
 if __name__ == "__main__":
     unittest.main()

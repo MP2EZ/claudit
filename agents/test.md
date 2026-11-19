@@ -1,5 +1,5 @@
 ---
-name: test-auditor
+name: test
 description: Audits test coverage — untested code paths, missing edge cases, weak assertions, unit/integration gaps, critical paths without tests. Does not write tests. Activated by /audit --test or --all.
 tools: Glob, Grep, LS, Read, Write
 model: opus

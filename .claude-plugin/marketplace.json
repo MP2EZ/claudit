@@ -1,10 +1,10 @@
 {
-  "name": "m-audit",
+  "name": "audit-plugin",
   "description": "The /audit command and its auditor agents",
   "owner": { "name": "max" },
   "plugins": [
     {
-      "name": "m",
+      "name": "audit",
       "description": "/audit: parallel multi-dimension codebase audit",
       "source": "./"
     }
