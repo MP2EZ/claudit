@@ -39,6 +39,9 @@ Find the failure modes that will hit real users — network drops, unexpected AP
 - Stale closures capturing outdated state in callbacks
 
 ### Data Integrity
+- Persisted state read back without a guard: `JSON.parse` of `localStorage`/`sessionStorage`/IndexedDB data with no try/catch, no version check, or no fallback when the stored shape is from an older build
+- Storage writes that can throw (quota exceeded, private mode, storage disabled) on a path the user depends on, such as saving progress
+- Service worker registration or update failures that leave the app on a stale cache with no recovery
 - Missing validation of API response shapes before use
 - Assuming arrays are non-empty, objects have expected keys
 - No null/undefined guards on chained property access from external data
