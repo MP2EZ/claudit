@@ -1,6 +1,6 @@
 {
   "name": "audit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "/audit: parallel codebase audit across performance, security, accessibility, test coverage, architecture, TypeScript, dependencies, resilience, design system, code bloat, and analytics",
   "license": "MIT"
 }
