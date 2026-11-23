@@ -111,6 +111,7 @@ NOISE_RE = re.compile(r"(^|/)(docs|examples?|mocks?|__mocks__|fixtures?|stories|
                       r"(^|/)previews?(/|\.)")
 # Code that never ships to users: tooling, migrations, build config. Excluded where runtime behaviour is the question.
 NON_RUNTIME_RE = re.compile(NOISE_RE.pattern + r"|(^|/)(scripts|migrations|bench)/|(^|/)[^/]*\.config\.[cm]?[jt]s$|\.d\.ts$")
+BUNDLER_RE = re.compile(r"(^|/)(vite|webpack|rollup|next|nuxt|astro|svelte|metro|tsup|esbuild|rspack)\.config\.[cm]?[jt]s$")
 IGNORE_RE = re.compile(r"^-\s*`([^`]+)`\s*·\s*([A-Za-z0-9]+)\s*·")
 FINDING_RE = re.compile(r"^-\s*\*\*([A-Z0-9]+)-(?:(\d+)-)?(\d+)\*\*\s*\(confidence:\s*(\d+)\)\s*`([^`]+)`\s*[—–-]+\s*(.*)$")
 SEV_ORDER = ["Critical", "Warning", "Info"]
@@ -206,7 +207,7 @@ def relevant_sets(files, repo_files):
     boundary = {d for f in src if is_boundary(f.path) for d in graph[f.path]}
     styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
     return {
-        "perf": runtime,
+        "perf": runtime + styles + [f for f in src if BUNDLER_RE.search(f.path)],  # animations; code splitting
         "security": [f for f in src if SECURITY_RE.search(f.text) or is_boundary(f.path) or f.path in boundary]
                     + [f for f in files if SECURITY_CONFIG_RE.search(f.path) and not NOISE_RE.search(f.path)],
         "a11y": ui + styles,  # focus rings, contrast and reduced motion live in CSS
