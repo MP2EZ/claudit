@@ -42,7 +42,7 @@ Surface real dependency risks — not every outdated package, but the ones that 
 
 ## How to Audit
 
-1. Read package.json / requirements.txt / Cargo.toml / go.mod (whatever applies)
+1. Read every manifest your brief lists, not just the root one: nested packages (a worker, a workspace member) and native shells (`Package.swift`/`Package.resolved`, `Podfile.lock`, Gradle) each pin their own versions. Check that native plugin versions match the JS packages that wrap them (Capacitor, React Native).
 2. Read the lockfile if present
 3. Run available audit commands (npm audit, etc.)
 4. Cross-reference imports in source code against declared dependencies
