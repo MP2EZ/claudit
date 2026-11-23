@@ -77,7 +77,9 @@ SKIP_DIRS = {"node_modules", ".git", "dist", "build", "out", ".next", ".expo", "
              "__pycache__", ".venv", "venv", "target", "Pods", ".turbo", ".cache", RUN_DIR}
 MANIFESTS = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb",
              "requirements.txt", "pyproject.toml", "poetry.lock", "Pipfile", "Cargo.toml", "Cargo.lock",
-             "go.mod", "go.sum", "Gemfile", "Gemfile.lock", "pubspec.yaml", "composer.json"]
+             "go.mod", "go.sum", "Gemfile", "Gemfile.lock", "pubspec.yaml", "pubspec.lock", "composer.json",
+             "composer.lock", "uv.lock", "deno.json", "deno.lock", "Package.swift", "Package.resolved", "Podfile",
+             "Podfile.lock", "build.gradle", "build.gradle.kts", "gradle.lockfile"]
 
 IMPORT_RE = re.compile(r"""(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 EXPORT_RE = re.compile(r"export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][\w$]*)")
@@ -514,6 +516,20 @@ def load(root, paths):
     return infos
 
 
+def find_manifests(repo_paths, under=Path("."), changed=None):
+    """Dependency manifests anywhere in the repo that govern `under` (inside it or an ancestor of it).
+    For a diff, only those in directories where a manifest changed: deps has nothing to say otherwise."""
+    def governs(p):
+        d = Path(p).parent
+        return under == Path(".") or d.is_relative_to(under) or under.is_relative_to(d)
+    found = [p for p in repo_paths if Path(p).name in MANIFESTS and not NOISE_RE.search(p) and not is_test(p)
+             and governs(p)]
+    if changed is not None:
+        dirs = {Path(p).parent for p in changed if Path(p).name in MANIFESTS}
+        found = [p for p in found if Path(p).parent in dirs]
+    return found
+
+
 def resolve_scope(o, cwd):
     # Root comes from the target, not cwd: a path in a nested repo or linked worktree
     # is invisible (often gitignored) from the enclosing repo's ls-files.
@@ -688,15 +704,16 @@ def cmd_plan(tokens, cwd):
     if mode == "diff" and "analytics" in o["dims"]:
         rel["analytics"] = relevant_sets(repo_files, repo_files)["analytics"]
         notes.append("analytics widened to full repo: coverage can't be judged from a diff.")
-    manifests = [FileInfo(m, 1, "") for m in MANIFESTS if (root / m).exists()]
-    rel["deps"] = manifests
+    under = target.relative_to(root) if target != root else Path(".")
+    rel["deps"] = [FileInfo(m, 1, "") for m in find_manifests(repo_paths, under, paths if mode == "diff" else None)]
 
     dims = []
     for d in o["dims"]:
         if rel[d]:
             dims.append(d)
         else:
-            notes.append(f"{d} skipped: nothing in scope it audits.")
+            notes.append("deps skipped: no dependency manifest changed in this diff." if d == "deps" and mode == "diff"
+                         else f"{d} skipped: nothing in scope it audits.")
     if not dims:
         raise UsageError(f"nothing to audit in {scope_desc}")
 
