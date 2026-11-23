@@ -10,7 +10,10 @@ color: yellow
 
 Find the untested code most likely to break without anyone noticing. Do NOT write tests; only identify gaps.
 
-The files in your brief are source files with no sibling test. Before reporting one as untested, Grep for tests elsewhere that import or exercise it (a `__tests__` directory, an integration suite, e2e specs).
+Each file in your brief is marked either `no test reaches it` or `tests: …` (the tests whose imports reach it).
+
+- **No test reaches it**: before reporting it as untested, Grep for tests that exercise it another way (e2e specs, a harness that loads it by path).
+- **Has tests**: list its branches, error paths and boundary cases, then read the named tests' assertions. Report what no assertion reaches, and tests that would still pass with the behavior broken. Never report a tested file as untested.
 
 ## What you're looking for
 
