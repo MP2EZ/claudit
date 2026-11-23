@@ -101,6 +101,10 @@ SECURITY_RE = re.compile(r"\bfetch\(|localStorage|sessionStorage|indexedDB|JSON\
                          r"dangerouslySetInnerHTML|\beval\(|new Function|postMessage|location\.|URLSearchParams|"
                          r"\b(req|request|env)\.|crypto\.|process\.env|child_process|\bexec\(|<script|"
                          r"\.prepare\(|new URL\(|DecompressionStream|atob\(|sha\d+|digest\(")
+# Non-code files that set the attack surface: headers/CSP, routes and bindings, native shells, CI secrets.
+SECURITY_CONFIG_RE = re.compile(r"(^|/)(wrangler\.(toml|jsonc?)|_headers|_redirects|vercel\.json|netlify\.toml|firebase\.json|"
+                                r"capacitor\.config\.json|Info\.plist|[^/]+\.entitlements|AndroidManifest\.xml|Dockerfile|"
+                                r"docker-compose\.ya?ml|nginx\.conf|\.env(\.[\w.-]+)?)$|(^|/)\.github/workflows/[^/]+\.ya?ml$")
 SERVER_DIR_RE = re.compile(r"(^|/)(worker|server|function)s?/")
 # Not the product: prose, design mocks, component previews, examples. Excluded from every dimension but deps.
 NOISE_RE = re.compile(r"(^|/)(docs|examples?|mocks?|__mocks__|fixtures?|stories|storybook)/|\.stories\.[jt]sx?$|"
@@ -203,7 +207,8 @@ def relevant_sets(files, repo_files):
     styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
     return {
         "perf": runtime,
-        "security": [f for f in src if SECURITY_RE.search(f.text) or is_boundary(f.path) or f.path in boundary],
+        "security": [f for f in src if SECURITY_RE.search(f.text) or is_boundary(f.path) or f.path in boundary]
+                    + [f for f in files if SECURITY_CONFIG_RE.search(f.path) and not NOISE_RE.search(f.path)],
         "a11y": ui + styles,  # focus rings, contrast and reduced motion live in CSS
         "test": [f for f in runtime if _ext(f.path) in TESTABLE_EXT],
         "arch": src,
@@ -485,7 +490,7 @@ def list_repo(root):
 def load(root, paths):
     infos = []
     for p in paths:
-        if _ext(p) not in CODE_EXT | STYLE_EXT:
+        if _ext(p) not in CODE_EXT | STYLE_EXT and not SECURITY_CONFIG_RE.search(p):
             continue
         try:
             text = (root / p).read_text(encoding="utf-8")
