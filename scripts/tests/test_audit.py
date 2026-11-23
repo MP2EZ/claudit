@@ -89,8 +89,19 @@ class RelevantSetsTest(unittest.TestCase):
         self.assertNotIn("src/sim/resolve.ts", m)   # stem matches resolve.test.ts, but no test imports it
         self.assertEqual(m["app/models.py"], {"tests/test_models.py"})
 
-    def test_a11y_takes_ui_files(self):
-        self.assertEqual(self.paths("a11y"), ["src/app/page.tsx"])
+    def test_a11y_takes_ui_files_and_styles(self):
+        self.assertEqual(self.paths("a11y"), ["src/app/page.tsx", "src/styles/theme.css"])
+
+    def test_a11y_takes_dom_built_ui(self):
+        files = [fi("src/admin/card.ts", 150, "const b = document.createElement('button')"),
+                 fi("src/ui/game/canvas.ts", 240, "const ctx = el.getContext('2d')"),
+                 fi("src/sim/state.ts", 900, "export const s = 1")]
+        rel = audit.relevant_sets(files, files)
+        self.assertEqual([f.path for f in rel["a11y"]], ["src/admin/card.ts", "src/ui/game/canvas.ts"])
+
+    def test_resilience_takes_storage_and_parsing(self):
+        files = [fi("src/ui/save.ts", 80, "const s = JSON.parse(localStorage.getItem(k))")]
+        self.assertEqual([f.path for f in audit.relevant_sets(files, files)["resilience"]], ["src/ui/save.ts"])
 
     def test_resilience_takes_async_files(self):
         self.assertEqual(self.paths("resilience"), ["src/lib/api.ts"])
