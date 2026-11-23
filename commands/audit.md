@@ -33,7 +33,7 @@ If plan printed `NOTE scope root is … merge with --dir <root>`, add that `--di
 
 The script dedups within each dimension, renumbers, sorts, and writes the report. It then prints the decisions left for you. Make each one from the printed descriptions; don't open the findings files.
 
-- `CROSS a + b`: the same location flagged by two dimensions. Combine them when they describe the same defect. Expected overlaps: ANLT PII-in-properties ↔ SEC data exposure; BLOAT dead exports ↔ ARCH coupling; BLOAT test bloat ↔ TEST, but only when both name the same defect.
+- `CROSS a + b`: the same location flagged by two dimensions, or by two lenses of one dimension. Combine them when they describe the same defect. Expected overlaps: ANLT PII-in-properties ↔ SEC data exposure; BLOAT dead exports ↔ ARCH coupling; BLOAT test bloat ↔ TEST, but only when both name the same defect.
 - `IGNORE id | … | entry`: the finding sits inside an `.audit-ignore.md` entry's glob for its dimension. Suppress it if it *is* the accepted pattern.
 - `BREAK`: a contract violation. Note it for the retro. Also check whether any slice reported findings outside its lens.
 

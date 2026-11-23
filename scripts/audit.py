@@ -89,7 +89,11 @@ SECURITY_RE = re.compile(r"\bfetch\(|localStorage|sessionStorage|indexedDB|JSON\
                          r"\b(req|request|env)\.|crypto\.|process\.env|child_process|\bexec\(|<script|"
                          r"\.prepare\(|new URL\(|DecompressionStream|atob\(|sha\d+|digest\(")
 SERVER_DIR_RE = re.compile(r"(^|/)(worker|server|function)s?/")
-NON_RUNTIME_RE = re.compile(r"(^|/)(docs|scripts)/|(^|/)[^/]*\.config\.[cm]?[jt]s$")
+# Not the product: prose, design mocks, component previews, examples. Excluded from every dimension but deps.
+NOISE_RE = re.compile(r"(^|/)(docs|examples?|mocks?|__mocks__|fixtures?|stories|storybook)/|\.stories\.[jt]sx?$|"
+                      r"(^|/)previews?(/|\.)")
+# Code that never ships to users: tooling, migrations, build config. Excluded where runtime behaviour is the question.
+NON_RUNTIME_RE = re.compile(NOISE_RE.pattern + r"|(^|/)(scripts|migrations|bench)/|(^|/)[^/]*\.config\.[cm]?[jt]s$|\.d\.ts$")
 IGNORE_RE = re.compile(r"^-\s*`([^`]+)`\s*·\s*([A-Za-z0-9]+)\s*·")
 FINDING_RE = re.compile(r"^-\s*\*\*([A-Z0-9]+)-(?:(\d+)-)?(\d+)\*\*\s*\(confidence:\s*(\d+)\)\s*`([^`]+)`\s*[—–-]+\s*(.*)$")
 SEV_ORDER = ["Critical", "Warning", "Info"]
@@ -172,20 +176,21 @@ def _stem(path):
 
 def relevant_sets(files, repo_files):
     """files: in-scope FileInfos; repo_files: whole repo (sibling-test lookup, analytics widening)."""
-    code = [f for f in files if _ext(f.path) in CODE_EXT and not f.path.endswith(".min.js")]
+    code = [f for f in files if _ext(f.path) in CODE_EXT and not f.path.endswith(".min.js") and not NOISE_RE.search(f.path)]
     src = [f for f in code if not is_test(f.path)]
+    runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
     tested = {_stem(f.path) for f in repo_files if is_test(f.path)}
     ui = [f for f in src if _ext(f.path) in UI_EXT or (_ext(f.path) in {".js", ".ts"} and JSX_RE.search(f.text))]
-    styles = [f for f in files if _ext(f.path) in STYLE_EXT]
+    styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
     untested = [f for f in src if _stem(f.path) not in tested]
     return {
-        "perf": [f for f in src if not f.path.endswith(".d.ts") and not NON_RUNTIME_RE.search(f.path)],
+        "perf": runtime,
         "security": [f for f in src if SECURITY_RE.search(f.text)
                      or ROUTE_DIR_RE.search(f.path) or SERVER_DIR_RE.search(f.path)],
         "a11y": ui,
         "test": untested or src,
         "arch": src,
-        "ts": [f for f in code if _ext(f.path) in {".ts", ".tsx"}],
+        "ts": [f for f in src if _ext(f.path) in {".ts", ".tsx"}],
         "resilience": [f for f in src if ASYNC_RE.search(f.text)],
         "ux": ui + [f for f in styles + src if f not in ui and (f in styles or TOKEN_PATH_RE.search(f.path))],
         "bloat": code,
