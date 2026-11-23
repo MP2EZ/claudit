@@ -65,8 +65,29 @@ class RelevantSetsTest(unittest.TestCase):
     def paths(self, dim):
         return [f.path for f in self.rel[dim]]
 
-    def test_test_dimension_takes_untested_source(self):
-        self.assertEqual(self.paths("test"), ["src/app/page.tsx", "src/lib/math.ts"])
+    def test_test_dimension_takes_all_runtime_source(self):
+        self.assertEqual(self.paths("test"), ["src/app/page.tsx", "src/lib/api.ts", "src/lib/math.ts"])
+
+    def test_test_dimension_skips_tooling_and_markup(self):
+        files = [fi("scripts/store/film.mjs", 300, "run()"), fi("ios/App/App/AppDelegate.swift", 40, "class A {}"),
+                 fi("migrations/0001.sql", 20, "create table t"), fi("index.html", 40, "<html>"),
+                 fi("src/sim/state.ts", 900, "export const s = 1")]
+        rel = audit.relevant_sets(files, files)
+        self.assertEqual([f.path for f in rel["test"]], ["ios/App/App/AppDelegate.swift", "src/sim/state.ts"])
+
+    def test_tests_map_to_sources_by_import_not_stem(self):
+        files = [fi("src/sim/state.ts", 900, "export const s = 1"),
+                 fi("src/sim/resolve.ts", 90, "export const r = 1"),
+                 fi("src/ui/store.ts", 900, "import { s } from '../sim/state.js'"),
+                 fi("tests/support/world.ts", 50, "import { s } from '../../src/sim/state.js'"),
+                 fi("tests/invariants/INV-12-growth.test.ts", 80, "import { world } from '../support/world'"),
+                 fi("tests/resolve.test.ts", 30, "import { x } from '../src/ui/store'"),
+                 fi("app/models.py", 40, "x = 1"), fi("tests/test_models.py", 20, "from app.models import x")]
+        m = audit.tested_by(files, audit.import_graph(files))
+        self.assertEqual(m["src/sim/state.ts"], {"tests/invariants/INV-12-growth.test.ts"})
+        self.assertEqual(m["src/ui/store.ts"], {"tests/resolve.test.ts"})
+        self.assertNotIn("src/sim/resolve.ts", m)   # stem matches resolve.test.ts, but no test imports it
+        self.assertEqual(m["app/models.py"], {"tests/test_models.py"})
 
     def test_a11y_takes_ui_files(self):
         self.assertEqual(self.paths("a11y"), ["src/app/page.tsx"])
