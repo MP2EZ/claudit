@@ -200,12 +200,14 @@ def relevant_sets(files, repo_files):
     runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
     ui = [f for f in runtime if _ext(f.path) in UI_EXT
           or (_ext(f.path) in {".js", ".ts"} and (JSX_RE.search(f.text) or DOM_UI_RE.search(f.text)))]
-    graph = import_graph(src)
+    # the graph spans the repo: a changed validator is on the boundary even when its route didn't change
+    repo_src = [f for f in repo_files if _ext(f.path) in CODE_EXT and not is_test(f.path)]
+    graph = import_graph(repo_src)
     # files that import an analytics module are its event sites, whatever they call the send
-    hubs = {f.path for f in src if ANALYTICS_PATH_RE.search(f.path) or VENDOR_RE.search(f.text)}
+    hubs = {f.path for f in repo_src if ANALYTICS_PATH_RE.search(f.path) or VENDOR_RE.search(f.text)}
     wired = {p for p, deps in graph.items() if deps & hubs}
     # what a server or route file imports runs on the trust boundary too (validators, parsers, digests)
-    boundary = {d for f in src if is_boundary(f.path) for d in graph[f.path]}
+    boundary = {d for p, deps in graph.items() if is_boundary(p) for d in deps}
     styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
     return {
         "perf": runtime + styles + [f for f in src if BUNDLER_RE.search(f.path)],  # animations; code splitting
@@ -327,12 +329,13 @@ def graph_facts(src, repo_files, refs=()):
     out = ["# Module graph (computed from relative imports)", "",
            "Candidates for you to verify, not findings. Dynamic imports, URL-registered files (service workers), "
            "framework conventions and config entry points are invisible here.", ""]
-    cyc = _cycles(graph, nodes)
+    code_nodes = {f.path for f in repo_files if _ext(f.path) in JS_EXT and not is_test(f.path)}
+    cyc = [c for c in _cycles(graph, code_nodes) if nodes & set(c)]  # cycles through unchanged files count
     out += [f"## Import cycles ({len(cyc)}; members of each)", ""] + [f"- {' · '.join(c)}" for c in cyc] + [""]
     top = lambda d: sorted(d, key=lambda kv: (-kv[1], kv[0]))[:10]
     out += ["## Most imported (non-test importers)", ""] + [
         f"- {p}: {n}" for p, n in top((p, len(prod_users[p])) for p in nodes) if n] + [""]
-    out += ["## Most imports", ""] + [f"- {p}: {n}" for p, n in top((p, len(graph[p] & nodes)) for p in nodes) if n] + [""]
+    out += ["## Most imports", ""] + [f"- {p}: {n}" for p, n in top((p, len(graph[p] & code_nodes)) for p in nodes) if n] + [""]
     out += ["## Largest files", ""] + [f"- {p}: {n} LOC" for p, n in top(loc.items())] + [""]
     edges = defaultdict(list)
     for a in sorted(nodes):

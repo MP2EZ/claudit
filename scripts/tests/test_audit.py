@@ -138,6 +138,12 @@ class RelevantSetsTest(unittest.TestCase):
             (Path(d) / "notes.txt").write_text("x\n")
             self.assertEqual([f.path for f in audit.load(Path(d), ["wrangler.jsonc", "notes.txt"])], ["wrangler.jsonc"])
 
+    def test_changed_validator_is_on_the_boundary_when_its_route_is_unchanged(self):
+        route = fi("worker/ingest.ts", 200, "import { validSave } from '../src/admin/valid-save.js'")
+        validator = fi("src/admin/valid-save.ts", 120, "export const validSave = (s) => s.v === 1")
+        rel = audit.relevant_sets([validator], [route, validator])
+        self.assertEqual([f.path for f in rel["security"]], ["src/admin/valid-save.ts"])
+
     def test_bloat_includes_tests_perf_does_not(self):
         self.assertIn("src/lib/api.test.ts", self.paths("bloat"))
         self.assertNotIn("src/lib/api.test.ts", self.paths("perf"))
@@ -215,6 +221,11 @@ class GraphFactsTest(unittest.TestCase):
         self.assertEqual(self.section("Exports only tests use"), ["src/b.ts: only"])
         self.assertIn("src/main.ts: helper", self.section("Exports used only inside their own file"))
         self.assertIn("src/lonely.ts: x", self.section("Exports nothing uses"))
+
+    def test_diff_scope_sees_cycles_through_unchanged_files(self):
+        repo = [fi("src/a.ts", 10, "import { b } from './b.js'"), fi("src/b.ts", 10, "import { a } from './a.js'")]
+        text = audit.graph_facts([repo[0]], repo)
+        self.assertIn("- src/a.ts · src/b.ts", text)
 
     def test_no_js_no_facts(self):
         self.assertIsNone(audit.graph_facts([fi("app/x.py", 10, "x = 1")], [fi("app/x.py", 10, "x = 1")]))
