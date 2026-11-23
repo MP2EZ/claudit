@@ -145,6 +145,16 @@ class RelevantSetsTest(unittest.TestCase):
     def test_analytics_takes_interaction_surface(self):
         self.assertEqual(self.paths("analytics"), ["src/app/page.tsx"])
 
+    def test_analytics_takes_importers_of_the_event_module_and_skips_lookalikes(self):
+        files = [fi("src/ui/usage.ts", 250, "// sent on to PostHog by the worker\nexport type Usage = {}"),
+                 fi("src/ui/game/port.ts", 100, "import type { Sent } from '../usage.js'"),
+                 fi("src/ui/game/canvas.ts", 240, "el.addEventListener('pointerdown', down)"),
+                 fi("src/ui/game/sound.ts", 640, "// a fast amplitude wobble"),
+                 fi("src/sim/state.ts", 900, "export const s = 1")]
+        rel = audit.relevant_sets(files, files)
+        self.assertEqual([f.path for f in rel["analytics"]],
+                         ["src/ui/usage.ts", "src/ui/game/port.ts", "src/ui/game/canvas.ts"])
+
     def test_non_code_ignored(self):
         self.assertNotIn("README.md", self.paths("security"))
 
@@ -158,6 +168,7 @@ class AllocateTest(unittest.TestCase):
         counts, _ = audit.allocate(
             {"perf": 9000, "arch": 9000, "analytics": 25000, "deps": 99999}, {}, False, 16)
         self.assertEqual(counts, {"perf": 3, "arch": 2, "analytics": 3, "deps": 1})
+        self.assertEqual(audit.allocate({"analytics": 5143}, {}, False, 16)[0], {"analytics": 2})
 
     def test_override_wins_except_deps(self):
         counts, _ = audit.allocate({"perf": 100, "deps": 100}, {"perf": 4, "deps": 3}, False, 16)
