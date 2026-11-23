@@ -164,6 +164,16 @@ class RelevantSetsTest(unittest.TestCase):
         for dim in ("perf", "security", "a11y", "test", "arch", "ux", "bloat", "analytics"):
             self.assertEqual([f.path for f in rel[dim]], ["src/ui/chip.tsx"], dim)
 
+    def test_ts_takes_compiler_config_in_one_slice(self):
+        files = [fi("tsconfig.json", 20, "{}"), fi("tsconfig.worker.json", 10, "{}"), fi("docs/tsconfig.json", 5, "{}")]
+        files += [fi(f"src/{d}/f{i}.ts", 500, "x") for d in "abcd" for i in range(4)]
+        ts = audit.relevant_sets(files, files)["ts"]
+        configs = [f.path for f in ts if f.path.endswith(".json")]
+        self.assertEqual(configs, ["tsconfig.json", "tsconfig.worker.json"])
+        slices = audit.partition("ts", ts, 4, [configs])
+        self.assertEqual(sum(1 for s in slices if set(configs) <= set(s["files"])), 1)
+        self.assertEqual(sum(1 for s in slices if set(configs) & set(s["files"])), 1)
+
     def test_ts_skips_tests(self):
         self.assertNotIn("src/lib/api.test.ts", self.paths("ts"))
         self.assertIn("src/lib/api.ts", self.paths("ts"))

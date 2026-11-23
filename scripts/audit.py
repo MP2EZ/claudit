@@ -112,6 +112,7 @@ NOISE_RE = re.compile(r"(^|/)(docs|examples?|mocks?|__mocks__|fixtures?|stories|
                       r"(^|/)previews?(/|\.)")
 # Code that never ships to users: tooling, migrations, build config. Excluded where runtime behaviour is the question.
 NON_RUNTIME_RE = re.compile(NOISE_RE.pattern + r"|(^|/)(scripts|migrations|bench)/|(^|/)[^/]*\.config\.[cm]?[jt]s$|\.d\.ts$")
+TS_CONFIG_RE = re.compile(r"(^|/)[jt]sconfig[^/]*\.json$")
 BUNDLER_RE = re.compile(r"(^|/)(vite|webpack|rollup|next|nuxt|astro|svelte|metro|tsup|esbuild|rspack)\.config\.[cm]?[jt]s$")
 IGNORE_RE = re.compile(r"^-\s*`([^`]+)`\s*·\s*([A-Za-z0-9]+)\s*·")
 FINDING_RE = re.compile(r"^-\s*\*\*([A-Z0-9]+)-(?:(\d+)-)?(\d+)\*\*\s*\(confidence:\s*(\d+)\)\s*`([^`]+)`\s*[—–-]+\s*(.*)$")
@@ -216,7 +217,8 @@ def relevant_sets(files, repo_files):
         "a11y": ui + styles,  # focus rings, contrast and reduced motion live in CSS
         "test": [f for f in runtime if _ext(f.path) in TESTABLE_EXT],
         "arch": src,
-        "ts": [f for f in src if _ext(f.path) in {".ts", ".tsx"}],
+        "ts": [f for f in files if TS_CONFIG_RE.search(f.path) and not NOISE_RE.search(f.path)]
+              + [f for f in src if _ext(f.path) in {".ts", ".tsx"}],
         "resilience": [f for f in src if ASYNC_RE.search(f.text)],
         "ux": ui + [f for f in styles + src if f not in ui and (f in styles or TOKEN_PATH_RE.search(f.path))],
         "bloat": code,
@@ -502,7 +504,7 @@ def list_repo(root):
 def load(root, paths):
     infos = []
     for p in paths:
-        if _ext(p) not in CODE_EXT | STYLE_EXT and not SECURITY_CONFIG_RE.search(p):
+        if _ext(p) not in CODE_EXT | STYLE_EXT and not SECURITY_CONFIG_RE.search(p) and not TS_CONFIG_RE.search(p):
             continue
         try:
             text = (root / p).read_text(encoding="utf-8")
@@ -637,7 +639,11 @@ def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, cont
         lines.append(f"- {widened_note}")
     if graph_md and (dim == "arch" or s["lens"] == BLOAT_CROSS_LENS):
         lines.append(f"- Module graph: `{graph_md}`. Read it first; verify any entry before reporting it.")
-    lines += ["", "## Partition", "", _partition_text(dim, s, slices), "",
+    owns_config = any(TS_CONFIG_RE.search(p) for p in s["files"])
+    config_note = ("" if dim != "ts" or s["mode"] == "whole" else
+                   " Compiler-config findings (`tsconfig*.json` flags) are yours: report each once, for every config."
+                   if owns_config else " Compiler config belongs to the slice holding `tsconfig*.json`: don't report it.")
+    lines += ["", "## Partition", "", _partition_text(dim, s, slices) + config_note, "",
               f"## Files ({len(s['files'])} files, {s['loc']} LOC" +
               {"test": "; tested files count half", "bloat": "; test files count half"}.get(dim, "") + ")", ""]
     shown = [_file_line(p, tests_of.get(p, ()) if dim == "test" else None) for p in s["files"]]
@@ -721,7 +727,9 @@ def cmd_plan(tokens, cwd):
     model = "sonnet" if o["fast"] else "opus"
     slices, agent_lines, alloc = [], [], []
     for d in dims:
-        dslices = partition(d, rel[d], counts[d], boundary_bundles(rel[d]) if d == "security" else ())
+        bundles = (boundary_bundles(rel[d]) if d == "security"
+                   else [[f.path for f in rel[d] if TS_CONFIG_RE.search(f.path)]] if d == "ts" else ())
+        dslices = partition(d, rel[d], counts[d], bundles)
         modes = {s["mode"] for s in dslices} - {"whole"}
         alloc.append(f"{d}×{len(dslices)}" + (f" ({'/'.join(sorted(modes))})" if modes else ""))
         for i, s in enumerate(dslices, 1):
