@@ -263,9 +263,21 @@ Allocation after round 2:
 - **`--all --max-agents 24`:** still 24 agents. Demand drops from 48 to 44, so the cap now trims 45% instead of 55%, and `RETRO 1 allocation` (threshold 50%) no longer fires.
 - **`--test --analytics`:** unchanged at 6.
 
+## Round 3: scope options, agent definitions, ts, deps (applied, c23345d…)
+
+| # | Gap on Citytown | Fix | Effect |
+|---|---|---|---|
+| 12 | **Bug:** a path plus `--diff` or `--staged` ignored the diff. `resolve_scope` returned as soon as it saw a path. `plan ~/dev/citytown --all --diff HEAD~15` planned 44 agents over the whole repo. Without the path, the same diff planned 19 agents over 48 changed files. | A diff narrows a path: only changed files under the path are audited (`git diff … in src/`). | `plan ~/dev/citytown/src --all --diff HEAD~15` now audits 17 changed files with 16 agents. |
+| 13 | The a11y, ux, resilience, perf and security definitions still described React components, though rounds 1–2 sent them canvas, DOM-built UI, CSS, persisted state, bundler config, server imports and config files. | Method lines in each definition: <ul><li>a11y: canvas alternatives, created elements, `:focus-visible`, `prefers-reduced-motion`.</li><li>ux: raw values in DOM and canvas code.</li><li>resilience: `JSON.parse` of stored state, storage writes that can throw, service-worker failures.</li><li>perf: CSS transitions on layout and paint, bundler settings.</li><li>security: imported validators, and headers, deploy, native-shell and CI config.</li></ul> | No allocation change. |
+| 14 | In diff mode the import graph was built from changed files only. A changed validator counted as server code only if its route changed too, and `graph.md` missed cycles through unchanged files. | Build the graph from the whole repo. Cycles are reported when any changed file is in them. | Security on the HEAD~15 diff goes from 17 files to 18. |
+| 15 | `ts.md` asks for strict-flag checks, but no `tsconfig` was ever in scope. Each of the 7 TS agents either skipped the check or would have repeated it. | Load `tsconfig*.json`/`jsconfig*.json`, keep them in one slice (as a bundle), and tell that slice it owns compiler-config findings. The other slices are told not to report them. | `tsconfig.json`, `tsconfig.app.json` and `tsconfig.worker.json` all land in TS-6. |
+| 16 | deps saw only root-level JS/Python/Rust/Go/Ruby manifests. It missed `ios/App/CapApp-SPM/Package.swift` and `Package.resolved`, both changed in the last 15 commits. It also launched on every diff. | `find_manifests`: <ul><li>finds manifests anywhere, adding SwiftPM, CocoaPods, Gradle and other lockfiles;</li><li>for a path scope, keeps the manifests that govern the path;</li><li>for a diff, keeps only the directories whose manifests changed, and otherwise skips deps with a note.</li></ul> `deps.md` reads every listed manifest and checks native plugin versions against their JS wrappers. | deps: 2 → 4 manifests. A diff touching no manifest prints `NOTE deps skipped: no dependency manifest changed in this diff.` |
+
+Agent totals on Citytown are unchanged by round 3: 44 for `--all` uncapped, 24 when capped, and 6 for `--test --analytics`. The suite passes 82 tests.
+
 ## Checked, no change proposed
 
-- **deps.** One agent over the manifests. No blind spot found.
+- **Other options.** `--fast` (model choice), `--no-split`, `--<dim>=N` overrides and `--max-agents` only change agent counts or which model runs. Their existing tests pass, and the round 1–2 weights flow through them.
 - **Cap trimming** (`allocate`) trims the dimension with the most agents. Under `--all --max-agents 24`, depth ends up very uneven: bloat runs at 19.7k LOC per agent and a11y at 2.8k. I prototyped a water-fill (trim where the post-trim LOC per agent stays lowest). It shifted agents from security and ux to bloat and ts, with no clear win, so I'm not proposing it.
 - **`.audit-ignore.md` whole-dimension acceptances** still fill slices. For example, `scripts/store/** · TEST` and `vite.config.ts · TEST` were sent to TEST-2 though accepted. §3 makes this moot for Citytown. In general, a file whose glob is accepted for a dimension could leave that dimension's demand and appear only for the stale-acceptance check.
 
