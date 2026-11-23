@@ -1,0 +1,60 @@
+diff --git a/scripts/audit.py b/scripts/audit.py
+index c9d3cd1..aaf3fed 100644
+--- a/scripts/audit.py
++++ b/scripts/audit.py
+@@ -82,8 +82,11 @@ IMPORT_RE = re.compile(r"""(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"](\.{1,2}/[^
+ TEST_FILE_RE = re.compile(r"\.(test|spec)\.[^/]+$|_test\.go$|(^|/)test_[^/]+\.py$")
+ TEST_RE = re.compile(r"(^|/)(__tests__|tests?|spec|e2e)/|\.(test|spec)\.[^/]+$|_test\.go$|(^|/)test_[^/]+\.py$")
+ JSX_RE = re.compile(r"(return|=>)\s*\(?\s*<[A-Za-z]")
++DOM_UI_RE = re.compile(r"document\.createElement\(|\.innerHTML\s*=|insertAdjacentHTML|\.tabIndex\b|"
++                       r"\.setAttribute\(\s*['\"](aria-|role|tabindex)|getContext\(\s*['\"]2d")
+ ASYNC_RE = re.compile(r"\bawait\b|\bfetch\(|\btry\s*\{|\btry:|\.then\(|\.catch\(|\bPromise\b|\baxios\b|"
+-                      r"XMLHttpRequest|WebSocket|\bfs\.|\brequests\.")
++                      r"XMLHttpRequest|WebSocket|\bfs\.|\brequests\.|localStorage|sessionStorage|indexedDB|"
++                      r"JSON\.parse|navigator\.serviceWorker|addEventListener\(\s*['\"](error|unhandledrejection)")
+ TOKEN_PATH_RE = re.compile(r"(^|/)(theme|tokens?|design-system|styles?)(/|\.)|tailwind\.config", re.I)
+ ROUTE_DIR_RE = re.compile(r"(^|/)(app|pages|routes|screens|views|api)/")
+ INTERACTION_RE = re.compile(r"onClick|onPress|onSubmit|handleSubmit|<form\b|\b(app|router)\.(post|put|patch|delete)\(|"
+@@ -186,13 +189,14 @@ def relevant_sets(files, repo_files):
+     code = [f for f in files if _ext(f.path) in CODE_EXT and not f.path.endswith(".min.js") and not NOISE_RE.search(f.path)]
+     src = [f for f in code if not is_test(f.path)]
+     runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
+-    ui = [f for f in src if _ext(f.path) in UI_EXT or (_ext(f.path) in {".js", ".ts"} and JSX_RE.search(f.text))]
++    ui = [f for f in runtime if _ext(f.path) in UI_EXT
++          or (_ext(f.path) in {".js", ".ts"} and (JSX_RE.search(f.text) or DOM_UI_RE.search(f.text)))]
+     styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
+     return {
+         "perf": runtime,
+         "security": [f for f in src if SECURITY_RE.search(f.text)
+                      or ROUTE_DIR_RE.search(f.path) or SERVER_DIR_RE.search(f.path)],
+-        "a11y": ui,
++        "a11y": ui + styles,  # focus rings, contrast and reduced motion live in CSS
+         "test": [f for f in runtime if _ext(f.path) in TESTABLE_EXT],
+         "arch": src,
+         "ts": [f for f in src if _ext(f.path) in {".ts", ".tsx"}],
+diff --git a/scripts/tests/test_audit.py b/scripts/tests/test_audit.py
+index 6988c09..7b8b28f 100644
+--- a/scripts/tests/test_audit.py
++++ b/scripts/tests/test_audit.py
+@@ -89,8 +89,19 @@ class RelevantSetsTest(unittest.TestCase):
+         self.assertNotIn("src/sim/resolve.ts", m)   # stem matches resolve.test.ts, but no test imports it
+         self.assertEqual(m["app/models.py"], {"tests/test_models.py"})
+ 
+-    def test_a11y_takes_ui_files(self):
+-        self.assertEqual(self.paths("a11y"), ["src/app/page.tsx"])
++    def test_a11y_takes_ui_files_and_styles(self):
++        self.assertEqual(self.paths("a11y"), ["src/app/page.tsx", "src/styles/theme.css"])
++
++    def test_a11y_takes_dom_built_ui(self):
++        files = [fi("src/admin/card.ts", 150, "const b = document.createElement('button')"),
++                 fi("src/ui/game/canvas.ts", 240, "const ctx = el.getContext('2d')"),
++                 fi("src/sim/state.ts", 900, "export const s = 1")]
++        rel = audit.relevant_sets(files, files)
++        self.assertEqual([f.path for f in rel["a11y"]], ["src/admin/card.ts", "src/ui/game/canvas.ts"])
++
++    def test_resilience_takes_storage_and_parsing(self):
++        files = [fi("src/ui/save.ts", 80, "const s = JSON.parse(localStorage.getItem(k))")]
++        self.assertEqual([f.path for f in audit.relevant_sets(files, files)["resilience"]], ["src/ui/save.ts"])
+ 
+     def test_resilience_takes_async_files(self):
+         self.assertEqual(self.paths("resilience"), ["src/lib/api.ts"])
