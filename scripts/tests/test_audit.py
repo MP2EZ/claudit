@@ -548,6 +548,19 @@ class ScopeTest(unittest.TestCase):
         root, mode, desc, paths, _, _ = audit.resolve_scope(o, self.outer)
         self.assertEqual((root, desc, paths), (self.inner, "app/", ["app/a.ts"]))
 
+    def test_path_with_diff_audits_only_changed_files_under_the_path(self):
+        (self.inner / "lib").mkdir()
+        (self.inner / "lib" / "c.ts").write_text("export const c = 1;\n")
+        (self.inner / "app" / "z.ts").write_text("export const z = 1;\n")
+        git = lambda *a: subprocess.run(["git", "-C", str(self.inner), "-c", "user.email=t@t", "-c", "user.name=t", *a],
+                                        check=True, capture_output=True)
+        git("add", "-A"); git("commit", "-qm", "one")
+        (self.inner / "app" / "a.ts").write_text("export const a = 2;\n")
+        (self.inner / "lib" / "c.ts").write_text("export const c = 2;\n")
+        git("commit", "-qam", "two")
+        root, mode, desc, paths, base, _ = audit.resolve_scope(audit.parse_args(["inner/app", "--diff", "HEAD~1"]), self.outer)
+        self.assertEqual((mode, desc, paths, base), ("diff", "git diff HEAD~1...HEAD in app/", ["app/a.ts"], "HEAD~1"))
+
     def test_gitignored_path_names_the_ignore_rule(self):
         o = audit.parse_args(["build"])
         with self.assertRaisesRegex(audit.UsageError, r"build/ is gitignored \(\.gitignore:2"):
