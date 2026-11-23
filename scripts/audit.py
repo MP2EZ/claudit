@@ -464,7 +464,9 @@ def _partition_text(dim, s, slices):
         return (f"File-chunk {i}/{n} for local bloat: report ONLY on the files below, and do NOT report "
                 "duplication, orphan, dead-export, or indirection findings: slice 1 owns them.")
     if s["mode"] == "file-chunk":
-        return f"File-chunk {i}/{n}: report ONLY on the files below; sibling slices cover the rest of this dimension."
+        return (f"File-chunk {i}/{n}: report ONLY on the files below; sibling slices cover the rest of this dimension. "
+                "Read what these files import or are called by, even outside this list, when a finding depends on it "
+                "(a render cost set by a store, an error swallowed by a caller); anchor the finding here.")
     others = ", ".join(o["lens"] for o in slices if o is not s)
     text = (f"Lens: **{s['lens']}**. You see the full relevant scope, but report ONLY findings under this lens; "
             f"sibling agents cover: {others}. Use Grep to find lens-relevant code and read only that.")

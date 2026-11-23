@@ -227,6 +227,12 @@ class PartitionTest(unittest.TestCase):
         slices = audit.partition("ts", [fi("a.ts", 6000), fi("b.ts", 6000)], 2)
         self.assertEqual([s["mode"] for s in slices], ["file-chunk", "file-chunk"])
 
+    def test_file_chunk_brief_allows_reading_across_the_seam(self):
+        s = {"slice": 1, "mode": "file-chunk", "lens": None}
+        text = audit._partition_text("perf", s, [s, dict(s, slice=2)])
+        self.assertIn("even outside this list", text)
+        self.assertIn("report ONLY on the files below", text)
+
     def test_bloat_reserves_cross_file_slice(self):
         slices = audit.partition("bloat", self.many_files(), 3)
         self.assertEqual(slices[0]["lens"], audit.BLOAT_CROSS_LENS)
