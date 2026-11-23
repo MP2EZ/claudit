@@ -2,7 +2,7 @@
 
 2026-11-22. Test case: Citytown (`~/dev/citytown`, HEAD on 2026-11-22). That is 468 loaded files and 60.8k LOC. Of those, 28.6k are tests and 24.8k are runtime source.
 
-**Status: proposals only. Nothing in `scripts/` or `agents/` is changed on this branch.** Each fix is a patch in [`blind-spots-2026-11-22/`](blind-spots-2026-11-22/) and comes with its tests. The patches apply in numbered order (`git apply docs/blind-spots-2026-11-22/*.patch`). After all six, `scripts/tests/test_audit.py` passes 65 tests (57 before). Every new test fails on the current code. Per `audit/retro.md`, apply them only on your approval.
+**Status: all six applied 2026-11-22 on approval, one commit each (8261aaa…de3ebb8).** The patches in [`blind-spots-2026-11-22/`](blind-spots-2026-11-22/) are kept as the record of what was proposed. `scripts/tests/test_audit.py` passes 65 tests (57 before), and every new test failed on the pre-patch code.
 
 All numbers come from `audit.py plan ~/dev/citytown …` run before and after the patches. LOC is read from disk.
 
@@ -259,7 +259,7 @@ New test: `test_file_chunk_brief_allows_reading_across_the_seam`. **Allocation:*
 
 ```bash
 python3 scripts/audit.py plan ~/dev/citytown --all --max-agents 200   # before
-git apply docs/blind-spots-2026-11-22/*.patch
+# (patches already applied; to compare, check out 9015c13 for "before")
 python3 scripts/tests/test_audit.py
 python3 scripts/audit.py plan ~/dev/citytown --all --max-agents 200   # after
 ```
