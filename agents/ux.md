@@ -12,7 +12,7 @@ Find UI that drifts from the project's design system, so the product stays consi
 
 ## Method
 
-First detect whether the project has a design system: a design-system, component-library, or tokens package in dependencies; a theme/tokens directory; a design-system config (Tailwind theme, styled-system, Tamagui, etc.); or imports from one. If none is detected, report a single Info finding saying so and stop.
+If your brief has a **Design-system reference** section, the system exists: read it first, then check UI against its tokens, components and written rules (wording, what each colour means, which control does what). Treat any doc that says the code wins as describing the code. Otherwise, first detect whether the project has a design system: a design-system, component-library, or tokens package in dependencies; a theme/tokens directory; a design-system config (Tailwind theme, styled-system, Tamagui, etc.); or imports from one. If none is detected, report a single Info finding saying so and stop.
 
 ## What you're looking for
 
