@@ -1,0 +1,80 @@
+diff --git a/commands/audit.md b/commands/audit.md
+index 94c2060..d0b117e 100644
+--- a/commands/audit.md
++++ b/commands/audit.md
+@@ -33,7 +33,7 @@ If plan printed `NOTE scope root is … merge with --dir <root>`, add that `--di
+ 
+ The script dedups within each dimension, renumbers, sorts, and writes the report. It then prints the decisions left for you. Make each one from the printed descriptions; don't open the findings files.
+ 
+-- `CROSS a + b`: the same location flagged by two dimensions. Combine them when they describe the same defect. Expected overlaps: ANLT PII-in-properties ↔ SEC data exposure; BLOAT dead exports ↔ ARCH coupling; BLOAT test bloat ↔ TEST, but only when both name the same defect.
++- `CROSS a + b`: the same location flagged by two dimensions, or by two lenses of one dimension. Combine them when they describe the same defect. Expected overlaps: ANLT PII-in-properties ↔ SEC data exposure; BLOAT dead exports ↔ ARCH coupling; BLOAT test bloat ↔ TEST, but only when both name the same defect.
+ - `IGNORE id | … | entry`: the finding sits inside an `.audit-ignore.md` entry's glob for its dimension. Suppress it if it *is* the accepted pattern.
+ - `BREAK`: a contract violation. Note it for the retro. Also check whether any slice reported findings outside its lens.
+ 
+diff --git a/scripts/audit.py b/scripts/audit.py
+index 0a6211e..441bd35 100644
+--- a/scripts/audit.py
++++ b/scripts/audit.py
+@@ -89,7 +89,11 @@ SECURITY_RE = re.compile(r"\bfetch\(|localStorage|sessionStorage|indexedDB|JSON\
+                          r"\b(req|request|env)\.|crypto\.|process\.env|child_process|\bexec\(|<script|"
+                          r"\.prepare\(|new URL\(|DecompressionStream|atob\(|sha\d+|digest\(")
+ SERVER_DIR_RE = re.compile(r"(^|/)(worker|server|function)s?/")
+-NON_RUNTIME_RE = re.compile(r"(^|/)(docs|scripts)/|(^|/)[^/]*\.config\.[cm]?[jt]s$")
++# Not the product: prose, design mocks, component previews, examples. Excluded from every dimension but deps.
++NOISE_RE = re.compile(r"(^|/)(docs|examples?|mocks?|__mocks__|fixtures?|stories|storybook)/|\.stories\.[jt]sx?$|"
++                      r"(^|/)previews?(/|\.)")
++# Code that never ships to users: tooling, migrations, build config. Excluded where runtime behaviour is the question.
++NON_RUNTIME_RE = re.compile(NOISE_RE.pattern + r"|(^|/)(scripts|migrations|bench)/|(^|/)[^/]*\.config\.[cm]?[jt]s$|\.d\.ts$")
+ IGNORE_RE = re.compile(r"^-\s*`([^`]+)`\s*·\s*([A-Za-z0-9]+)\s*·")
+ FINDING_RE = re.compile(r"^-\s*\*\*([A-Z0-9]+)-(?:(\d+)-)?(\d+)\*\*\s*\(confidence:\s*(\d+)\)\s*`([^`]+)`\s*[—–-]+\s*(.*)$")
+ SEV_ORDER = ["Critical", "Warning", "Info"]
+@@ -172,20 +176,21 @@ def _stem(path):
+ 
+ def relevant_sets(files, repo_files):
+     """files: in-scope FileInfos; repo_files: whole repo (sibling-test lookup, analytics widening)."""
+-    code = [f for f in files if _ext(f.path) in CODE_EXT and not f.path.endswith(".min.js")]
++    code = [f for f in files if _ext(f.path) in CODE_EXT and not f.path.endswith(".min.js") and not NOISE_RE.search(f.path)]
+     src = [f for f in code if not is_test(f.path)]
++    runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
+     tested = {_stem(f.path) for f in repo_files if is_test(f.path)}
+     ui = [f for f in src if _ext(f.path) in UI_EXT or (_ext(f.path) in {".js", ".ts"} and JSX_RE.search(f.text))]
+-    styles = [f for f in files if _ext(f.path) in STYLE_EXT]
++    styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
+     untested = [f for f in src if _stem(f.path) not in tested]
+     return {
+-        "perf": [f for f in src if not f.path.endswith(".d.ts") and not NON_RUNTIME_RE.search(f.path)],
++        "perf": runtime,
+         "security": [f for f in src if SECURITY_RE.search(f.text)
+                      or ROUTE_DIR_RE.search(f.path) or SERVER_DIR_RE.search(f.path)],
+         "a11y": ui,
+         "test": untested or src,
+         "arch": src,
+-        "ts": [f for f in code if _ext(f.path) in {".ts", ".tsx"}],
++        "ts": [f for f in src if _ext(f.path) in {".ts", ".tsx"}],
+         "resilience": [f for f in src if ASYNC_RE.search(f.text)],
+         "ux": ui + [f for f in styles + src if f not in ui and (f in styles or TOKEN_PATH_RE.search(f.path))],
+         "bloat": code,
+diff --git a/scripts/tests/test_audit.py b/scripts/tests/test_audit.py
+index a0f20d9..31ff90b 100644
+--- a/scripts/tests/test_audit.py
++++ b/scripts/tests/test_audit.py
+@@ -94,6 +94,19 @@ class RelevantSetsTest(unittest.TestCase):
+         self.assertEqual([f.path for f in rel["perf"]], ["src/ui/store.ts"])
+         self.assertIn("scripts/release.mjs", [f.path for f in rel["bloat"]])
+ 
++    def test_docs_mocks_and_previews_leave_every_dimension(self):
++        files = [fi("docs/audits/x/mocks/brand.html", 400, "<button onclick=go()>"),
++                 fi("design-library/components/Chip/preview.html", 40, "<div>"),
++                 fi("design-library/components/preview.css", 40, ""),
++                 fi("src/ui/chip.tsx", 100, "export default () => { return (<b onClick={() => fetch(u)}/>) }")]
++        rel = audit.relevant_sets(files, files)
++        for dim in ("perf", "security", "a11y", "test", "arch", "ux", "bloat", "analytics"):
++            self.assertEqual([f.path for f in rel[dim]], ["src/ui/chip.tsx"], dim)
++
++    def test_ts_skips_tests(self):
++        self.assertNotIn("src/lib/api.test.ts", self.paths("ts"))
++        self.assertIn("src/lib/api.ts", self.paths("ts"))
++
+     def test_ux_includes_styles(self):
+         self.assertIn("src/styles/theme.css", self.paths("ux"))
+ 

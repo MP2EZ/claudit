@@ -1,0 +1,32 @@
+diff --git a/scripts/audit.py b/scripts/audit.py
+index 8a5e510..e5dae8d 100644
+--- a/scripts/audit.py
++++ b/scripts/audit.py
+@@ -464,7 +464,9 @@ def _partition_text(dim, s, slices):
+         return (f"File-chunk {i}/{n} for local bloat: report ONLY on the files below, and do NOT report "
+                 "duplication, orphan, dead-export, or indirection findings: slice 1 owns them.")
+     if s["mode"] == "file-chunk":
+-        return f"File-chunk {i}/{n}: report ONLY on the files below; sibling slices cover the rest of this dimension."
++        return (f"File-chunk {i}/{n}: report ONLY on the files below; sibling slices cover the rest of this dimension. "
++                "Read what these files import or are called by, even outside this list, when a finding depends on it "
++                "(a render cost set by a store, an error swallowed by a caller); anchor the finding here.")
+     others = ", ".join(o["lens"] for o in slices if o is not s)
+     text = (f"Lens: **{s['lens']}**. You see the full relevant scope, but report ONLY findings under this lens; "
+             f"sibling agents cover: {others}. Use Grep to find lens-relevant code and read only that.")
+diff --git a/scripts/tests/test_audit.py b/scripts/tests/test_audit.py
+index 9c44cf7..a424e7f 100644
+--- a/scripts/tests/test_audit.py
++++ b/scripts/tests/test_audit.py
+@@ -227,6 +227,12 @@ class PartitionTest(unittest.TestCase):
+         slices = audit.partition("ts", [fi("a.ts", 6000), fi("b.ts", 6000)], 2)
+         self.assertEqual([s["mode"] for s in slices], ["file-chunk", "file-chunk"])
+ 
++    def test_file_chunk_brief_allows_reading_across_the_seam(self):
++        s = {"slice": 1, "mode": "file-chunk", "lens": None}
++        text = audit._partition_text("perf", s, [s, dict(s, slice=2)])
++        self.assertIn("even outside this list", text)
++        self.assertIn("report ONLY on the files below", text)
++
+     def test_bloat_reserves_cross_file_slice(self):
+         slices = audit.partition("bloat", self.many_files(), 3)
+         self.assertEqual(slices[0]["lens"], audit.BLOAT_CROSS_LENS)
