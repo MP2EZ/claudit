@@ -22,6 +22,7 @@ If one exists, components and UI in scope should use its primitives instead of r
 - Ad-hoc layout where the system has layout primitives (`Stack`, `Box`, grid utilities).
 - Partial adoption: a token for color but hardcoded spacing in the same component.
 - Inconsistent interaction states: missing hover/pressed/disabled/focus styles the system provides.
+- UI built in code (`createElement`, `innerHTML`, inline `style.x =` assignments) and canvas drawing code: the same raw-value checks apply to colors, fonts and sizes set there, which no component library catches.
 
 ## Severity
 

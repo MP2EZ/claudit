@@ -18,6 +18,8 @@ Find the performance problems users will feel: slow screens, janky scrolling, lo
 - **Network**: N+1 queries, sequential requests that could run in parallel (waterfalls), refetching unchanged data, missing caching or pagination.
 - **Bundle**: heavy dependencies imported for one function, missing code splitting on large routes, importing whole libraries instead of submodules.
 - **Animation**: layout-thrashing reads/writes, animating layout properties instead of transforms, JS-thread animations where a native/compositor path exists.
+- **Stylesheets**: transitions and keyframes on layout properties (`top`, `width`, `height`, `margin`) or paint-heavy ones (`box-shadow`, `filter`) on common elements, `will-change` left on permanently, very broad selectors on large DOMs.
+- **Bundler config**: missing code splitting or manual chunks for large routes, no minification or tree-shaking settings, source maps or dev-only plugins shipped to production, assets inlined above a sane size.
 
 ## Severity
 

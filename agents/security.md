@@ -12,7 +12,13 @@ Find vulnerabilities an attacker could actually reach. Trace data from untrusted
 
 ## Method
 
-Start from trust-boundary files: routes/API handlers, auth, database/query code, and code touching `request`, `process.env`, SQL, the filesystem, or the network. Trace each input to where it is used.
+Start from trust-boundary files: routes/API handlers, auth, database/query code, and code touching `request`, `process.env`, SQL, the filesystem, or the network. Trace each input to where it is used. Files a server or route file imports (validators, parsers, shared types) are in your scope because the server trusts them: check that they actually reject what an attacker can send.
+
+Config files in scope set the attack surface; read them as code:
+- **Headers** (`_headers`, `vercel.json`, `netlify.toml`, `nginx.conf`): CSP strength (`unsafe-inline`, `unsafe-eval`, wildcard sources), HSTS, `frame-ancestors`, CORS.
+- **Deploy config** (`wrangler.*`, `firebase.json`, `Dockerfile`): public routes, bindings exposed to the wrong worker, secrets in `vars`, debug or dev settings in production.
+- **Native shells** (`capacitor.config.*`, `Info.plist`, `.entitlements`, `AndroidManifest.xml`): `allowNavigation` wildcards, cleartext HTTP or App Transport Security exceptions, exported components, over-broad permissions.
+- **CI workflows** (`.github/workflows/*`): `pull_request_target` running untrusted code, secrets exposed to forks, unpinned third-party actions, over-broad `permissions`.
 
 Apply STRIDE to what you find:
 - **Spoofing**: authentication bypass, session fixation/hijacking, weak token handling.
