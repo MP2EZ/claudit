@@ -90,9 +90,11 @@ ASYNC_RE = re.compile(r"\bawait\b|\bfetch\(|\btry\s*\{|\btry:|\.then\(|\.catch\(
 TOKEN_PATH_RE = re.compile(r"(^|/)(theme|tokens?|design-system|styles?)(/|\.)|tailwind\.config", re.I)
 ROUTE_DIR_RE = re.compile(r"(^|/)(app|pages|routes|screens|views|api)/")
 INTERACTION_RE = re.compile(r"onClick|onPress|onSubmit|handleSubmit|<form\b|\b(app|router)\.(post|put|patch|delete)\(|"
-                            r"export\s+(async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b|useMutation")
-ANALYTICS_RE = re.compile(r"posthog|mixpanel|@segment|amplitude|gtag\(|dataLayer|firebase/analytics|"
-                          r"@vercel/analytics|plausible|rudder|\.capture\(|\.track\(|logEvent\(")
+                            r"export\s+(async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b|useMutation|"
+                            r"addEventListener\(\s*['\"](click|pointer\w*|touch\w*|key\w*|submit|change|input)['\"]")
+VENDOR_RE = re.compile(r"(?i:\bposthog\b|\bmixpanel\b|@segment/|@amplitude/|amplitude\.(getInstance|init|track)|\bgtag\(|"
+                       r"\bdataLayer\b|firebase/analytics|@vercel/analytics|\bplausible\b|rudderstack|rudder-sdk)")
+ANALYTICS_RE = re.compile(VENDOR_RE.pattern + r"|\.capture\(|\.track\(|logEvent\(")
 ANALYTICS_PATH_RE = re.compile(r"analytics|tracking|telemetry", re.I)
 SECURITY_RE = re.compile(r"\bfetch\(|localStorage|sessionStorage|indexedDB|JSON\.parse|innerHTML|"
                          r"dangerouslySetInnerHTML|\beval\(|new Function|postMessage|location\.|URLSearchParams|"
@@ -191,6 +193,9 @@ def relevant_sets(files, repo_files):
     runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
     ui = [f for f in runtime if _ext(f.path) in UI_EXT
           or (_ext(f.path) in {".js", ".ts"} and (JSX_RE.search(f.text) or DOM_UI_RE.search(f.text)))]
+    # files that import an analytics module are its event sites, whatever they call the send
+    hubs = {f.path for f in src if ANALYTICS_PATH_RE.search(f.path) or VENDOR_RE.search(f.text)}
+    wired = {p for p, deps in import_graph(src).items() if deps & hubs}
     styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
     return {
         "perf": runtime,
@@ -204,7 +209,7 @@ def relevant_sets(files, repo_files):
         "ux": ui + [f for f in styles + src if f not in ui and (f in styles or TOKEN_PATH_RE.search(f.path))],
         "bloat": code,
         "analytics": [f for f in src if ROUTE_DIR_RE.search(f.path) or INTERACTION_RE.search(f.text)
-                      or ANALYTICS_RE.search(f.text) or ANALYTICS_PATH_RE.search(f.path)],
+                      or ANALYTICS_RE.search(f.text) or ANALYTICS_PATH_RE.search(f.path) or f.path in wired],
     }
 
 
@@ -254,7 +259,7 @@ def _demand(dim, loc):
     if dim == "arch":
         return 2 if loc > 8000 else 1
     if dim == "analytics":
-        return 3 if loc > 20000 else 2 if loc > 8000 else 1
+        return min(3, max(1, math.ceil(loc / CHUNK_LOC)))  # lenses, one per CHUNK_LOC
     return max(1, math.ceil(loc / CHUNK_LOC))
 
 
