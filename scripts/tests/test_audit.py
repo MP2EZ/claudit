@@ -251,6 +251,26 @@ class WeighTest(unittest.TestCase):
         self.assertEqual([f.loc for f in rel["perf"]], [400])
 
 
+class ManifestsTest(unittest.TestCase):
+    REPO = ["package.json", "package-lock.json", "ios/App/CapApp-SPM/Package.swift",
+            "ios/App/App.xcodeproj/swiftpm/Package.resolved", "worker/package.json",
+            "docs/example/package.json", "tests/fixtures/app/package.json", "src/ui/main.ts"]
+
+    def test_finds_nested_and_native_manifests(self):
+        self.assertEqual(audit.find_manifests(self.REPO),
+                         ["package.json", "package-lock.json", "ios/App/CapApp-SPM/Package.swift",
+                          "ios/App/App.xcodeproj/swiftpm/Package.resolved", "worker/package.json"])
+
+    def test_path_scope_keeps_manifests_that_govern_it(self):
+        self.assertEqual(audit.find_manifests(self.REPO, Path("worker")),
+                         ["package.json", "package-lock.json", "worker/package.json"])
+
+    def test_diff_without_manifest_changes_has_no_deps(self):
+        self.assertEqual(audit.find_manifests(self.REPO, changed=["src/ui/main.ts"]), [])
+        self.assertEqual(audit.find_manifests(self.REPO, changed=["package.json", "src/ui/main.ts"]),
+                         ["package.json", "package-lock.json"])
+
+
 class AllocateTest(unittest.TestCase):
     def test_small_scope_one_each(self):
         counts, demanded = audit.allocate({"perf": 3000, "arch": 3000, "deps": 50}, {}, False, 16)
