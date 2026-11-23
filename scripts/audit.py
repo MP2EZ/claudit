@@ -79,6 +79,7 @@ MANIFESTS = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
              "go.mod", "go.sum", "Gemfile", "Gemfile.lock", "pubspec.yaml", "composer.json"]
 
 IMPORT_RE = re.compile(r"""(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
+EXPORT_RE = re.compile(r"export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][\w$]*)")
 TEST_FILE_RE = re.compile(r"\.(test|spec)\.[^/]+$|_test\.go$|(^|/)test_[^/]+\.py$")
 TEST_RE = re.compile(r"(^|/)(__tests__|tests?|spec|e2e)/|\.(test|spec)\.[^/]+$|_test\.go$|(^|/)test_[^/]+\.py$")
 JSX_RE = re.compile(r"(return|=>)\s*\(?\s*<[A-Za-z]")
@@ -265,6 +266,99 @@ def tested_by(repo_files, graph):
         if not is_test(f.path) and _ext(f.path) not in JS_EXT and _stem(f.path) in stems:
             out[f.path] |= stems[_stem(f.path)]
     return out
+
+
+def _cycles(graph, nodes):
+    """Strongly connected components of size > 1 (iterative Tarjan)."""
+    index, low, on, stack, out, counter = {}, {}, set(), [], [], [0]
+    for root in sorted(nodes):
+        if root in index:
+            continue
+        work = [(root, iter(sorted(graph.get(root, ()) & nodes)))]
+        index[root] = low[root] = counter[0]; counter[0] += 1; stack.append(root); on.add(root)
+        while work:
+            v, it = work[-1]
+            w = next(it, None)
+            if w is None:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[v])
+                if low[v] == index[v]:
+                    comp = []
+                    while True:
+                        x = stack.pop(); on.discard(x); comp.append(x)
+                        if x == v:
+                            break
+                    if len(comp) > 1:
+                        out.append(sorted(comp))
+            elif w not in index:
+                index[w] = low[w] = counter[0]; counter[0] += 1; stack.append(w); on.add(w)
+                work.append((w, iter(sorted(graph.get(w, ()) & nodes))))
+            elif w in on:
+                low[v] = min(low[v], index[w])
+    return out
+
+
+def _area(path):
+    parts = Path(path).parts
+    return "/".join(parts[:2]) if len(parts) > 2 else parts[0] if len(parts) > 1 else "."
+
+
+def graph_facts(src, repo_files, refs=()):
+    """Markdown facts from the relative-import graph, for arch and bloat's cross-file lens. Candidates, not findings."""
+    graph = import_graph(repo_files)
+    nodes = {f.path for f in src if _ext(f.path) in JS_EXT}
+    if not nodes:
+        return None
+    text = {f.path: f.text for f in repo_files}
+    users = defaultdict(set)
+    for a, deps in graph.items():
+        for b in deps:
+            users[b].add(a)
+    prod_users = {p: {u for u in users[p] if not is_test(u)} for p in nodes}
+    loc = {f.path: f.loc for f in src}
+    out = ["# Module graph (computed from relative imports)", "",
+           "Candidates for you to verify, not findings. Dynamic imports, URL-registered files (service workers), "
+           "framework conventions and config entry points are invisible here.", ""]
+    cyc = _cycles(graph, nodes)
+    out += [f"## Import cycles ({len(cyc)}; members of each)", ""] + [f"- {' · '.join(c)}" for c in cyc] + [""]
+    top = lambda d: sorted(d, key=lambda kv: (-kv[1], kv[0]))[:10]
+    out += ["## Most imported (non-test importers)", ""] + [
+        f"- {p}: {n}" for p, n in top((p, len(prod_users[p])) for p in nodes) if n] + [""]
+    out += ["## Most imports", ""] + [f"- {p}: {n}" for p, n in top((p, len(graph[p] & nodes)) for p in nodes) if n] + [""]
+    out += ["## Largest files", ""] + [f"- {p}: {n} LOC" for p, n in top(loc.items())] + [""]
+    edges = defaultdict(list)
+    for a in sorted(nodes):
+        for b in sorted(graph[a]):
+            if not is_test(b) and _area(a) != _area(b):
+                edges[(_area(a), _area(b))].append(f"{a} → {b}")
+    out += ["## Imports across areas (who depends on whom)", ""] + [
+        f"- {x} → {y}: {len(v)} (e.g. {v[0]})" for (x, y), v in sorted(edges.items(), key=lambda kv: -len(kv[1]))[:25]] + [""]
+    # named by a non-test file (html script tag, package.json script, wrangler main, a registered URL)
+    sources = [(f.path, f.text) for f in repo_files if not is_test(f.path)] + list(refs)
+    def referenced(p):
+        name = re.compile(r"(^|[^\w.-])" + re.escape(Path(p).stem) + r"(\.[cm]?[jt]sx?)?(?![\w-])")
+        return any(q != p and (p in t or name.search(t)) for q, t in sources if Path(p).stem in t)
+    loose = [p for p in sorted(nodes) if not prod_users[p] and not p.endswith(".d.ts") and not referenced(p)]
+    orphans = [p for p in loose if not users[p]]
+    test_only = [p for p in loose if users[p]]
+    out += [f"## Orphan candidates: nothing imports or names them ({len(orphans)})", ""] + [f"- {p}" for p in orphans] + [""]
+    out += [f"## Modules only tests import ({len(test_only)})", ""] + [f"- {p}" for p in test_only] + [""]
+    dead, for_tests, local = [], [], []
+    for p in sorted(nodes):
+        for name in sorted(set(EXPORT_RE.findall(text[p]))):
+            word = re.compile(r"\b" + re.escape(name) + r"\b")
+            if any(word.search(text[u]) for u in prod_users[p]):
+                continue
+            if any(word.search(text[u]) for u in users[p]):
+                for_tests.append(f"{p}: {name}")
+            else:
+                (local if len(word.findall(text[p])) > 1 else dead).append(f"{p}: {name}")
+    for title, xs in [("Exports nothing uses, not even their own file", dead),
+                      ("Exports only tests use", for_tests),
+                      ("Exports used only inside their own file (the `export` is unneeded)", local)]:
+        out += [f"## {title} ({len(xs)}{', first 60' if len(xs) > 60 else ''})", ""] + [f"- {x}" for x in xs[:60]] + [""]
+    return "\n".join(out) + "\n"
 
 
 # ---------------------------------------------------------------- allocation + partition
@@ -506,7 +600,8 @@ def _file_line(p, tests):
     return f"{p} — tests: {', '.join(t[:3])}" + (f" (+{len(t) - 3} more)" if len(t) > 3 else "")
 
 
-def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, contract, widened_note, tests_of=None):
+def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, contract, widened_note, tests_of=None,
+                graph_md=None):
     d = DIMS[dim]
     lines = [f"# /audit brief: {d.label}, slice {s['slice']} of {len(slices)}", "",
              f"- Dimension: {d.label}. Finding prefix `{d.prefix}`, slice index `{s['slice']}` "
@@ -521,6 +616,8 @@ def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, cont
                      "use unchanged code as context only.")
     if widened_note and dim == "analytics":
         lines.append(f"- {widened_note}")
+    if graph_md and (dim == "arch" or s["lens"] == BLOAT_CROSS_LENS):
+        lines.append(f"- Module graph: `{graph_md}`. Read it first; verify any entry before reporting it.")
     lines += ["", "## Partition", "", _partition_text(dim, s, slices), "",
               f"## Files ({len(s['files'])} files, {s['loc']} LOC" +
               ("; tested files count half" if dim == "test" else "") + ")", ""]
@@ -589,6 +686,16 @@ def cmd_plan(tokens, cwd):
     if len(dims) > o["max_agents"]:
         notes.append(f"--max-agents {o['max_agents']} is below the dimension count; running 1 per dimension.")
 
+    graph_md = None
+    if {"arch", "bloat"} & set(dims):
+        refs = [(p, (root / p).read_text(errors="ignore")) for p in repo_paths
+                if _ext(p) in {".json", ".jsonc", ".toml", ".yml", ".yaml", ".webmanifest"}
+                and (root / p).stat().st_size < 200_000]
+        facts = graph_facts(rel.get("arch") or relevant_sets(files, repo_files)["arch"], repo_files, refs)
+        if facts:
+            graph_md = run / "graph.md"
+            graph_md.write_text(facts)
+
     ignore = {} if o["no_ignore"] else load_ignore(root)
     stack = detect_stack(root, repo_paths)
     contract = (PLUGIN_ROOT / "audit" / "contract.md").read_text().strip()
@@ -602,7 +709,7 @@ def cmd_plan(tokens, cwd):
             s.update(id=f"{DIMS[d].prefix}-{i}", dim=d, prefix=DIMS[d].prefix, slice=i)
         for s in dslices:
             brief = write_brief(run, root, stack, scope_desc, base, d, s, dslices, ignore, contract,
-                                notes[0] if mode == "diff" and d == "analytics" else None, tests_of)
+                                notes[0] if mode == "diff" and d == "analytics" else None, tests_of, graph_md)
             agent_lines.append(f"AGENT {s['id']} | {DIMS[d].agent} | {model} | Audit {s['id']} | "
                                f"Read {brief} and follow it exactly.")
         slices += dslices

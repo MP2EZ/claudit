@@ -128,7 +128,7 @@ Two passes. Do not skip Pass 1 — most of what a fresh reader would call "this 
 
 ### Pass 1 — Structural sweep (repo-level, before reading anything closely)
 
-Use Glob and Grep to build a cheap index. You do not need to read files to do this.
+Use Glob and Grep to build a cheap index. You do not need to read files to do this. If your brief names a module-graph file, its orphan, test-only and unused-export lists replace checks 1–2 below: verify those candidates instead of re-deriving them.
 
 1. **Orphan check**: for each module in scope, grep the repo for imports of its path/basename. Zero hits outside itself → orphan candidate. Watch for dynamic imports, route-convention files (Next.js `page.tsx`, `+page.svelte`), config-referenced entry points, and test files importing it — those are not orphans.
 2. **Dead export check**: grep each exported symbol name across the repo. Exported and imported nowhere → dead export candidate. Same caveats.
