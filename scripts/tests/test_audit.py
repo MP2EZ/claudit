@@ -144,7 +144,7 @@ class RelevantSetsTest(unittest.TestCase):
 
     def test_perf_skips_docs_scripts_and_config(self):
         files = [fi("docs/ERD.html", 500, "<html>"), fi("scripts/release.mjs", 200, "run()"),
-                 fi("vite.config.ts", 40, "export default {}"), fi("src/ui/store.ts", 300, "export const s = 1")]
+                 fi("eslint.config.js", 40, "export default {}"), fi("src/ui/store.ts", 300, "export const s = 1")]
         rel = audit.relevant_sets(files, files)
         self.assertEqual([f.path for f in rel["perf"]], ["src/ui/store.ts"])
         self.assertIn("scripts/release.mjs", [f.path for f in rel["bloat"]])
@@ -161,6 +161,12 @@ class RelevantSetsTest(unittest.TestCase):
     def test_ts_skips_tests(self):
         self.assertNotIn("src/lib/api.test.ts", self.paths("ts"))
         self.assertIn("src/lib/api.ts", self.paths("ts"))
+
+    def test_perf_takes_styles_and_bundler_config(self):
+        files = [fi("src/ui/game.css", 900, ".hud { transition: top 1s }"), fi("vite.config.ts", 200, "build: {}"),
+                 fi("vitest.config.ts", 20, "{}"), fi("src/ui/store.ts", 300, "export const s = 1")]
+        rel = audit.relevant_sets(files, files)
+        self.assertEqual(sorted(f.path for f in rel["perf"]), ["src/ui/game.css", "src/ui/store.ts", "vite.config.ts"])
 
     def test_ux_includes_styles(self):
         self.assertIn("src/styles/theme.css", self.paths("ux"))
