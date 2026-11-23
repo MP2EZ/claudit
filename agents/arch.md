@@ -13,7 +13,7 @@ Find the structure that makes the code fragile to change: where a small edit for
 ## Method
 
 Work structurally; do not read every file.
-1. Build the module graph from import/require statements with Grep, and size files with `wc -l`.
+1. If your brief names a module-graph file, start from it: cycles, fan-in/fan-out, cross-area imports, sizes. Otherwise (non-JS code) build the graph from import statements with Grep and size files with `wc -l`.
 2. Read only the hotspots the graph surfaces: cycles, high fan-in/fan-out modules, the largest files.
 
 ## What you're looking for

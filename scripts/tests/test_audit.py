@@ -166,6 +166,38 @@ class RelevantSetsTest(unittest.TestCase):
         self.assertNotIn("README.md", self.paths("security"))
 
 
+class GraphFactsTest(unittest.TestCase):
+    def facts(self):
+        files = [fi("src/a.ts", 300, "import { b } from './b.js'\nexport const a = 1"),
+                 fi("src/b.ts", 200, "import { a } from './a.js'\nexport const b = 2\nexport const only = 3"),
+                 fi("src/main.ts", 50, "import { a } from './a.js'\nimport './boot.js'\nexport function helper() {}\nhelper()"),
+                 fi("src/lonely.ts", 40, "export const x = 1"),
+                 fi("src/sw.ts", 40, "self.addEventListener('fetch', f)"),
+                 fi("src/boot.ts", 20, "navigator.serviceWorker.register('/sw.js')"),
+                 fi("tests/b.test.ts", 30, "import { only } from '../src/b.js'")]
+        src = [f for f in files if not audit.is_test(f.path)]
+        return audit.graph_facts(src, files, [("index.html", '<script src="/src/main.ts">')])
+
+    def section(self, title):
+        text = self.facts()
+        body = text.split(f"## {title}", 1)[1].split("\n## ", 1)[0]
+        return [line[2:] for line in body.splitlines() if line.startswith("- ")]
+
+    def test_cycles_listed_with_members(self):
+        self.assertEqual(self.section("Import cycles"), ["src/a.ts · src/b.ts"])
+
+    def test_orphans_skip_files_named_by_html_or_a_registered_url(self):
+        self.assertEqual(self.section("Orphan candidates"), ["src/lonely.ts"])
+
+    def test_export_buckets(self):
+        self.assertEqual(self.section("Exports only tests use"), ["src/b.ts: only"])
+        self.assertIn("src/main.ts: helper", self.section("Exports used only inside their own file"))
+        self.assertIn("src/lonely.ts: x", self.section("Exports nothing uses"))
+
+    def test_no_js_no_facts(self):
+        self.assertIsNone(audit.graph_facts([fi("app/x.py", 10, "x = 1")], [fi("app/x.py", 10, "x = 1")]))
+
+
 class AllocateTest(unittest.TestCase):
     def test_small_scope_one_each(self):
         counts, demanded = audit.allocate({"perf": 3000, "arch": 3000, "deps": 50}, {}, False, 16)
