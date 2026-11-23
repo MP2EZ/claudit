@@ -599,18 +599,25 @@ def merge(plan, texts, combine=(), suppress=()):
         for name, rows in parsed["extras"].items():
             extras[name].append(rows)
 
-    findings = []
+    findings, dup_candidates = [], []
     for dim, fs in by_dim.items():
-        best = {}
+        at = defaultdict(list)
         for f in fs:
-            a = _norm_anchor(f["anchor"], root)
-            if a not in best or _rank(f) < _rank(best[a]):
-                best[a] = f
-        dups = sum(1 for f in fs if (b := best[_norm_anchor(f["anchor"], root)]) is not f
-                   and f["sid"] != b["sid"] and "sub-lens" not in (f["smode"], b["smode"]))
+            at[_norm_anchor(f["anchor"], root)].append(f)
+        dups = 0
+        for group in at.values():
+            win = min(group, key=_rank)
+            # One agent's findings at one line are distinct defects; only another slice can duplicate them.
+            for f in group:
+                if f["sid"] == win["sid"]:
+                    findings.append(f)
+                elif "sub-lens" in (f["smode"], win["smode"]):
+                    findings.append(f)  # lenses overlap by design: the orchestrator decides, via --combine
+                    dup_candidates.append((win["key"], f["key"]))
+                else:
+                    dups += 1
         if dups >= 3:
             retro.append(f"3 dedup churn: {dups} duplicates dropped in {DIMS[dim].prefix}")
-        findings += best.values()
 
     by_anchor = defaultdict(list)
     for f in findings:
@@ -655,7 +662,8 @@ def merge(plan, texts, combine=(), suppress=()):
         retro.append(f"1 allocation: launched {plan['launched_total']} of {plan['demanded_total']} demanded agents")
     if breaks:
         retro.append(f"4 contract break: {len(breaks)} violation(s), see BREAK lines")
-    return {"findings": findings, "cross": cross, "ignore_candidates": ignore_candidates,
+    dup_candidates = [g for g in dup_candidates if all(keyed[k] in findings for k in g)]
+    return {"findings": findings, "cross": cross + dup_candidates, "ignore_candidates": ignore_candidates,
             "suppressed": dict(suppressed), "breaks": breaks, "retro": retro, "extras": dict(extras)}
 
 
