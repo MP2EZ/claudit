@@ -94,6 +94,19 @@ class RelevantSetsTest(unittest.TestCase):
         self.assertEqual([f.path for f in rel["perf"]], ["src/ui/store.ts"])
         self.assertIn("scripts/release.mjs", [f.path for f in rel["bloat"]])
 
+    def test_docs_mocks_and_previews_leave_every_dimension(self):
+        files = [fi("docs/audits/x/mocks/brand.html", 400, "<button onclick=go()>"),
+                 fi("design-library/components/Chip/preview.html", 40, "<div>"),
+                 fi("design-library/components/preview.css", 40, ""),
+                 fi("src/ui/chip.tsx", 100, "export default () => { return (<b onClick={() => fetch(u)}/>) }")]
+        rel = audit.relevant_sets(files, files)
+        for dim in ("perf", "security", "a11y", "test", "arch", "ux", "bloat", "analytics"):
+            self.assertEqual([f.path for f in rel[dim]], ["src/ui/chip.tsx"], dim)
+
+    def test_ts_skips_tests(self):
+        self.assertNotIn("src/lib/api.test.ts", self.paths("ts"))
+        self.assertIn("src/lib/api.ts", self.paths("ts"))
+
     def test_ux_includes_styles(self):
         self.assertIn("src/styles/theme.css", self.paths("ux"))
 
