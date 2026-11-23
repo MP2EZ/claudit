@@ -523,15 +523,17 @@ def resolve_scope(o, cwd):
         out = _git(["diff", "--name-only", "--diff-filter=d", *args], root) or ""
         return [p for p in out.splitlines() if _keep(p)]
 
-    if target:
-        rel = target.relative_to(root) if target != root else Path(".")
-        paths = [p for p in repo if rel == Path(".") or Path(p).is_relative_to(rel)]
-        return root, "path", f"{rel}/", paths, None, target
+    rel = (target.relative_to(root) if target != root else Path(".")) if target else Path(".")
+    inside = lambda ps: [p for p in ps if rel == Path(".") or Path(p).is_relative_to(rel)]
+    where = f" in {rel}/" if rel != Path(".") else ""
+    # an explicit diff narrows a path; a bare path audits everything under it
     if o["diff"]:
         base = o["diff"]
-        return root, "diff", f"git diff {base}...HEAD", changed([f"{base}...HEAD"]), base, root
+        return root, "diff", f"git diff {base}...HEAD{where}", inside(changed([f"{base}...HEAD"])), base, target or root
     if o["staged"]:
-        return root, "diff", "staged changes", changed(["--cached"]), "--cached", root
+        return root, "diff", f"staged changes{where}", inside(changed(["--cached"])), "--cached", target or root
+    if target:
+        return root, "path", f"{rel}/", inside(repo), None, target
     branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], root)
     if branch and branch not in ("main", "master", "HEAD"):
         for cand in ("main", "master", "origin/main", "origin/master"):
