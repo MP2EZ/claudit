@@ -326,6 +326,22 @@ class MergeTest(unittest.TestCase):
         r = audit.merge(plan, {"PERF-1": "### Warning\n" + one, "PERF-2": "### Warning\n" + dup})
         self.assertTrue(any(t.startswith("3") for t in r["retro"]))
 
+    def test_same_slice_findings_at_one_anchor_both_survive(self):
+        two = ("### Warning\n"
+               "- **ANLT-1-02** (confidence: 80) `src/store.ts:602` — visit has no push attribution\n  → add source\n"
+               "- **ANLT-1-03** (confidence: 80) `src/store.ts:602` — events carry no platform\n  → add platform\n")
+        r = audit.merge(plan_for([sl("ANLT-1", "analytics")]), {"ANLT-1": two})
+        self.assertEqual(sorted(f["desc"] for f in r["findings"]),
+                         ["events carry no platform", "visit has no push attribution"])
+
+    def test_sub_lens_overlap_is_kept_and_offered_for_combine(self):
+        a = "### Warning\n- **ARCH-1-01** (confidence: 80) `src/a.ts:3` — cycle a↔b\n  → split\n"
+        b = "### Warning\n- **ARCH-2-01** (confidence: 90) `src/a.ts:3` — god file\n  → split\n"
+        plan = plan_for([sl("ARCH-1", "arch", ["src/a.ts"], "sub-lens"), sl("ARCH-2", "arch", ["src/a.ts"], "sub-lens")])
+        r = audit.merge(plan, {"ARCH-1": a, "ARCH-2": b})
+        self.assertEqual(len(r["findings"]), 2)
+        self.assertIn(("ARCH-2-01", "ARCH-1-01"), r["cross"])
+
     def test_sub_lens_overlap_does_not_fire_trigger_3(self):
         lens = "\n".join(f"- **BLOAT-1-0{i}** (confidence: 80) `src/a.ts:{i}` — d\n  → r" for i in range(1, 4))
         chunk = "\n".join(f"- **BLOAT-2-0{i}** (confidence: 80) `src/a.ts:{i}` — d\n  → r" for i in range(1, 4))
