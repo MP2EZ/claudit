@@ -246,11 +246,25 @@ New test: `test_file_chunk_brief_allows_reading_across_the_seam`. **Allocation:*
 
 ---
 
+## Round 2: security, architecture, performance, bloat (applied, 211db1e…4737f2c)
+
+My first pass called these four "noise only". With the import graph from §2 they had real gaps. All five fixes are applied, one commit each. The suite passes 75 tests.
+
+| # | Gap on Citytown | Fix | Effect |
+|---|---|---|---|
+| 7 | Security: `worker/ingest.ts` went to SEC-3 and its validator `src/admin/valid-save.ts` to SEC-2. `src/admin/digest.ts` (run by the server on client saves), `src/ui/usage.ts` (the worker validates event names against it) and `src/ui/pushes.ts` were outside the set: no trigger words. | Whatever a server or route file imports joins the set (`is_boundary`). `boundary_bundles` keeps each server directory together with its imports, the way `chunk_by_module` keeps a directory together. | The worker and every module it imports are now in one slice (SEC-1). Security goes from 69 files / 9.5k LOC to 82 / 11.8k, still 3 agents. |
+| 8 | Arch was told to rebuild the import graph with grep, with 2 agents each facing 27k LOC. Bloat's cross-file agent swept 428 files by reading. | `graph_facts` writes `.audit-run/graph.md`: import cycles, fan-in/out, largest files, imports across areas, orphan and test-only modules, and unused exports. The arch briefs and bloat's cross-file brief point to it. `agents/arch.md` and `agents/bloat.md` start from it and verify entries before reporting. | Citytown has 1 cycle (`render/draw`: along · board · frame · motion), `worker/` importing `src/ui` 4 times and `src/admin` 5 times, 3 orphan candidates, 1 test-only module, 133 exports only tests use, and 109 needless `export`s. Files named by an HTML script tag, a `package.json` script, wrangler `main` or a registered URL don't count as orphans, which cut the false alarms from 13 to 3. |
+| 9 | Security config was never loaded: `public/_headers` (CSP), `wrangler.jsonc`, `capacitor.config.json`, `Info.plist` and three CI workflows, about 350 lines. | `SECURITY_CONFIG_RE` files are loaded and go to security only. | 7 more files in security, none anywhere else. |
+| 10 | Perf excluded CSS and `vite.config.ts`, though its agent asks about layout animations and code splitting. | Perf adds stylesheets and bundler config (`BUNDLER_RE`). | Perf goes from 163 files / 25.1k LOC to 170 / 26.7k, still 7 agents. |
+| 11 | Tests were 49% of bloat's LOC and drove demand to 15 agents. | `weigh()` counts test files at `BLOAT_TEST_WEIGHT = 0.5`, as it already does for tested sources in the test dimension. | Bloat goes from 15 agents to 11 with the same files. |
+
+Allocation after round 2:
+- **`--all` uncapped:** 48 → **44** agents.
+- **`--all --max-agents 24`:** still 24 agents. Demand drops from 48 to 44, so the cap now trims 45% instead of 55%, and `RETRO 1 allocation` (threshold 50%) no longer fires.
+- **`--test --analytics`:** unchanged at 6.
+
 ## Checked, no change proposed
 
-- **security.** The trust-boundary regex reaches all 12 `worker/` files and every `src/ui` file touching storage, fetch or `postMessage`. Its only gap was noise (§3). `scripts/` stays in on purpose (signing keys).
-- **arch.** Sub-lens agents see the full set and grep it, so noise costs little (9%, fixed by §3).
-- **bloat.** Tests are 28.6k of 59k LOC (49%), and bloat demands 15 agents, the largest share of every capped run. That is by design ("test bloat"). If it feels heavy, weight tests at 0.5 as §2 does: demand 15 → ~11.
 - **deps.** One agent over the manifests. No blind spot found.
 - **Cap trimming** (`allocate`) trims the dimension with the most agents. Under `--all --max-agents 24`, depth ends up very uneven: bloat runs at 19.7k LOC per agent and a11y at 2.8k. I prototyped a water-fill (trim where the post-trim LOC per agent stays lowest). It shifted agents from security and ux to bloat and ts, with no clear win, so I'm not proposing it.
 - **`.audit-ignore.md` whole-dimension acceptances** still fill slices. For example, `scripts/store/** · TEST` and `vite.config.ts · TEST` were sent to TEST-2 though accepted. §3 makes this moot for Citytown. In general, a file whose glob is accepted for a dimension could leave that dimension's demand and appear only for the stale-acceptance check.
@@ -264,4 +278,4 @@ python3 scripts/tests/test_audit.py
 python3 scripts/audit.py plan ~/dev/citytown --all --max-agents 200   # after
 ```
 
-`plan` overwrites `~/dev/citytown/.audit-run/`, which is scratch. The briefs there show the new `tests:` annotations.
+`plan` overwrites `~/dev/citytown/.audit-run/`, which is scratch. The briefs there show the new `tests:` annotations, and `graph.md` holds the module-graph facts.
