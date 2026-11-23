@@ -193,14 +193,16 @@ def relevant_sets(files, repo_files):
     runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
     ui = [f for f in runtime if _ext(f.path) in UI_EXT
           or (_ext(f.path) in {".js", ".ts"} and (JSX_RE.search(f.text) or DOM_UI_RE.search(f.text)))]
+    graph = import_graph(src)
     # files that import an analytics module are its event sites, whatever they call the send
     hubs = {f.path for f in src if ANALYTICS_PATH_RE.search(f.path) or VENDOR_RE.search(f.text)}
-    wired = {p for p, deps in import_graph(src).items() if deps & hubs}
+    wired = {p for p, deps in graph.items() if deps & hubs}
+    # what a server or route file imports runs on the trust boundary too (validators, parsers, digests)
+    boundary = {d for f in src if is_boundary(f.path) for d in graph[f.path]}
     styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
     return {
         "perf": runtime,
-        "security": [f for f in src if SECURITY_RE.search(f.text)
-                     or ROUTE_DIR_RE.search(f.path) or SERVER_DIR_RE.search(f.path)],
+        "security": [f for f in src if SECURITY_RE.search(f.text) or is_boundary(f.path) or f.path in boundary],
         "a11y": ui + styles,  # focus rings, contrast and reduced motion live in CSS
         "test": [f for f in runtime if _ext(f.path) in TESTABLE_EXT],
         "arch": src,
@@ -211,6 +213,20 @@ def relevant_sets(files, repo_files):
         "analytics": [f for f in src if ROUTE_DIR_RE.search(f.path) or INTERACTION_RE.search(f.text)
                       or ANALYTICS_RE.search(f.text) or ANALYTICS_PATH_RE.search(f.path) or f.path in wired],
     }
+
+
+def is_boundary(path):
+    return bool(ROUTE_DIR_RE.search(path) or SERVER_DIR_RE.search(path))
+
+
+def boundary_bundles(files):
+    """One bundle per server/route directory: its files, then what they import. Partitioned as a unit."""
+    graph = import_graph(files)
+    dirs = defaultdict(list)
+    for f in sorted(files, key=lambda f: f.path):
+        if is_boundary(f.path):
+            dirs[str(Path(f.path).parent)].append(f.path)
+    return [ps + sorted({d for p in ps for d in graph[p]} - set(ps)) for ps in dirs.values()]
 
 
 def import_graph(files):
@@ -285,12 +301,20 @@ def _loc(fs):
     return sum(f.loc for f in fs)
 
 
-def chunk_by_module(files, n):
-    """n disjoint chunks; whole directories stay together unless one alone exceeds the target."""
+def chunk_by_module(files, n, bundles=()):
+    """n disjoint chunks; whole directories (and each bundle, in its order) stay together unless one alone
+    exceeds the target."""
     target = _loc(files) / n
-    groups = defaultdict(list)
+    by_path = {f.path: f for f in files}
+    groups, taken = {}, set()
+    for i, b in enumerate(bundles):
+        fs = [by_path[p] for p in b if p in by_path and p not in taken]
+        taken.update(f.path for f in fs)
+        if fs:
+            groups[f"bundle {i}"] = fs
     for f in sorted(files, key=lambda f: f.path):
-        groups[str(Path(f.path).parent)].append(f)
+        if f.path not in taken:
+            groups.setdefault(str(Path(f.path).parent), []).append(f)
     units = []
     for fs in groups.values():
         if _loc(fs) > target and len(fs) > 1:
@@ -320,7 +344,7 @@ def _slice(mode, files, lens=None):
     return {"mode": mode, "files": [f.path for f in files], "loc": _loc(files), "lens": lens}
 
 
-def partition(dim, files, n):
+def partition(dim, files, n, bundles=()):
     if n <= 1:
         return [_slice("whole", files)]
     if dim == "bloat":
@@ -331,7 +355,7 @@ def partition(dim, files, n):
         if dim == "analytics" and n == 2:
             lenses = [f"{lenses[0]} + data quality & identity", lenses[1]]
         return [_slice("sub-lens", files, lens) for lens in lenses]
-    return [_slice("file-chunk", c) for c in chunk_by_module(files, n)]
+    return [_slice("file-chunk", c) for c in chunk_by_module(files, n, bundles)]
 
 
 # ---------------------------------------------------------------- scope (git / filesystem)
@@ -571,7 +595,7 @@ def cmd_plan(tokens, cwd):
     model = "sonnet" if o["fast"] else "opus"
     slices, agent_lines, alloc = [], [], []
     for d in dims:
-        dslices = partition(d, rel[d], counts[d])
+        dslices = partition(d, rel[d], counts[d], boundary_bundles(rel[d]) if d == "security" else ())
         modes = {s["mode"] for s in dslices} - {"whole"}
         alloc.append(f"{d}×{len(dslices)}" + (f" ({'/'.join(sorted(modes))})" if modes else ""))
         for i, s in enumerate(dslices, 1):
