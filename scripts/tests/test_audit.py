@@ -115,6 +115,13 @@ class RelevantSetsTest(unittest.TestCase):
         rel = audit.relevant_sets(files, files)
         self.assertEqual([f.path for f in rel["security"]], ["worker/saves.ts", "worker/util.ts"])
 
+    def test_security_takes_what_server_files_import(self):
+        files = [fi("worker/ingest.ts", 200, "import { validSave } from '../src/admin/valid-save.js'"),
+                 fi("src/admin/valid-save.ts", 120, "export const validSave = (s) => s.v === 1"),
+                 fi("src/admin/chart.ts", 80, "export const bar = 1")]
+        rel = audit.relevant_sets(files, files)
+        self.assertEqual([f.path for f in rel["security"]], ["worker/ingest.ts", "src/admin/valid-save.ts"])
+
     def test_bloat_includes_tests_perf_does_not(self):
         self.assertIn("src/lib/api.test.ts", self.paths("bloat"))
         self.assertNotIn("src/lib/api.test.ts", self.paths("perf"))
@@ -203,6 +210,16 @@ class PartitionTest(unittest.TestCase):
         self.assertEqual([s["mode"] for s in slices], ["file-chunk"] * 4)
         for s in slices:
             self.assertEqual(len({p.split("/")[1] for p in s["files"]}), 1)
+
+    def test_security_keeps_a_route_with_what_it_imports(self):
+        files = [fi("worker/ingest.ts", 1000, "import { v } from '../src/admin/valid-save.js'"),
+                 fi("worker/index.ts", 500, "import { i } from './ingest.js'"),
+                 fi("src/admin/valid-save.ts", 500, "export const v = 1"),
+                 fi("src/admin/a.ts", 2500, "x"), fi("src/ui/b.ts", 1000, "x"), fi("src/ui/c.ts", 1000, "x")]
+        slices = audit.partition("security", files, 2, audit.boundary_bundles(files))
+        with_route = next(s for s in slices if "worker/ingest.ts" in s["files"])
+        self.assertIn("src/admin/valid-save.ts", with_route["files"])
+        self.assertIn("worker/index.ts", with_route["files"])
 
     def test_oversized_directory_is_split(self):
         files = [fi(f"src/big/f{i}.ts", 1000) for i in range(8)]
