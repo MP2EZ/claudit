@@ -220,6 +220,16 @@ class GraphFactsTest(unittest.TestCase):
         self.assertIsNone(audit.graph_facts([fi("app/x.py", 10, "x = 1")], [fi("app/x.py", 10, "x = 1")]))
 
 
+class WeighTest(unittest.TestCase):
+    def test_tested_sources_and_bloat_test_files_count_half(self):
+        rel = {"test": [fi("src/a.ts", 400), fi("src/b.ts", 400)],
+               "bloat": [fi("src/a.ts", 400), fi("tests/a.test.ts", 300)], "perf": [fi("src/a.ts", 400)]}
+        audit.weigh(rel, {"src/a.ts": {"tests/a.test.ts"}})
+        self.assertEqual([f.loc for f in rel["test"]], [200, 400])
+        self.assertEqual([f.loc for f in rel["bloat"]], [400, 150])
+        self.assertEqual([f.loc for f in rel["perf"]], [400])
+
+
 class AllocateTest(unittest.TestCase):
     def test_small_scope_one_each(self):
         counts, demanded = audit.allocate({"perf": 3000, "arch": 3000, "deps": 50}, {}, False, 16)

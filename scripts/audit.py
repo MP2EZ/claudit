@@ -25,6 +25,7 @@ CHUNK_LOC = 4000            # what one agent can analyze deeply
 DEFAULT_MAX_AGENTS = 16     # cost/consolidation governor
 INLINE_FILE_LIMIT = 150     # longer file lists go to a side file the agent reads
 TESTED_WEIGHT = 0.5         # a file some test reaches is checked against those tests, not read cold
+BLOAT_TEST_WEIGHT = 0.5     # test files are read for test bloat only, a narrower check than source
 
 
 class Dim(NamedTuple):
@@ -369,6 +370,13 @@ def graph_facts(src, repo_files, refs=()):
 
 # ---------------------------------------------------------------- allocation + partition
 
+def weigh(rel, tests_of):
+    """Scale LOC for allocation in place: tested sources in test, test files in bloat."""
+    half = lambda f, w: f._replace(loc=math.ceil(f.loc * w))
+    rel["test"] = [half(f, TESTED_WEIGHT) if f.path in tests_of else f for f in rel.get("test", [])]
+    rel["bloat"] = [half(f, BLOAT_TEST_WEIGHT) if is_test(f.path) else f for f in rel.get("bloat", [])]
+
+
 def _demand(dim, loc):
     if dim == "deps":
         return 1
@@ -626,7 +634,7 @@ def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, cont
         lines.append(f"- Module graph: `{graph_md}`. Read it first; verify any entry before reporting it.")
     lines += ["", "## Partition", "", _partition_text(dim, s, slices), "",
               f"## Files ({len(s['files'])} files, {s['loc']} LOC" +
-              ("; tested files count half" if dim == "test" else "") + ")", ""]
+              {"test": "; tested files count half", "bloat": "; test files count half"}.get(dim, "") + ")", ""]
     shown = [_file_line(p, tests_of.get(p, ()) if dim == "test" else None) for p in s["files"]]
     if len(s["files"]) > INLINE_FILE_LIMIT:
         side = run / "scope" / f"{s['id']}.txt"
@@ -664,7 +672,7 @@ def cmd_plan(tokens, cwd):
     repo_files = load(root, repo_paths) if mode == "diff" or target != root else files
     rel = relevant_sets(files, repo_files)
     tests_of = tested_by(repo_files, import_graph(repo_files)) if "test" in o["dims"] else {}
-    rel["test"] = [f._replace(loc=math.ceil(f.loc * TESTED_WEIGHT)) if f.path in tests_of else f for f in rel["test"]]
+    weigh(rel, tests_of)
     notes = []
     if mode == "diff" and "analytics" in o["dims"]:
         rel["analytics"] = relevant_sets(repo_files, repo_files)["analytics"]
