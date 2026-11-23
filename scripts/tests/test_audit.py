@@ -99,6 +99,15 @@ class RelevantSetsTest(unittest.TestCase):
         rel = audit.relevant_sets(files, files)
         self.assertEqual([f.path for f in rel["a11y"]], ["src/admin/card.ts", "src/ui/game/canvas.ts"])
 
+    def test_dev_pages_leave_a11y_and_ux(self):
+        files = [fi("src/ui/sound-demo.ts", 240, "document.createElement('button')"),
+                 fi("src/ui/sound-demo.css", 30, ""), fi("src/ui/harness.ts", 150, "el.getContext('2d')"),
+                 fi("src/ui/sheet.ts", 100, "document.createElement('dialog')")]
+        rel = audit.relevant_sets(files, files)
+        for dim in ("a11y", "ux"):
+            self.assertEqual([f.path for f in rel[dim]], ["src/ui/sheet.ts"], dim)
+        self.assertIn("src/ui/harness.ts", [f.path for f in rel["perf"]])
+
     def test_resilience_takes_storage_and_parsing(self):
         files = [fi("src/ui/save.ts", 80, "const s = JSON.parse(localStorage.getItem(k))")]
         self.assertEqual([f.path for f in audit.relevant_sets(files, files)["resilience"]], ["src/ui/save.ts"])
@@ -249,6 +258,18 @@ class WeighTest(unittest.TestCase):
         self.assertEqual([f.loc for f in rel["test"]], [200, 400])
         self.assertEqual([f.loc for f in rel["bloat"]], [400, 150])
         self.assertEqual([f.loc for f in rel["perf"]], [400])
+
+
+class DesignRefsTest(unittest.TestCase):
+    def test_finds_design_docs_tokens_and_token_sheets(self):
+        paths = ["design-library/README.md", "design-library/tokens.json", "design-library/components/Chip/README.md",
+                 "design-library/components/Chip/preview.html", "src/theme/colors.ts", "tailwind.config.ts",
+                 "docs/design-system.md", "src/ui/game/game.css", "src/ui/page.css", "src/ui/store.ts"]
+        files = [fi("src/ui/game/game.css", 400, "\n".join(f"  --c{i}: 1;" for i in range(25))),
+                 fi("src/ui/page.css", 40, ":root { --a: 1; }")]
+        self.assertEqual(audit.design_refs(paths, files),
+                         ["design-library/README.md", "design-library/tokens.json", "design-library/components/Chip/README.md",
+                          "src/theme/colors.ts", "tailwind.config.ts", "src/ui/game/game.css"])
 
 
 class ManifestsTest(unittest.TestCase):

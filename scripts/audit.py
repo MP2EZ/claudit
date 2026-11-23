@@ -114,6 +114,12 @@ NOISE_RE = re.compile(r"(^|/)(docs|examples?|mocks?|__mocks__|fixtures?|stories|
                       r"(^|/)previews?(/|\.)")
 # Code that never ships to users: tooling, migrations, build config. Excluded where runtime behaviour is the question.
 NON_RUNTIME_RE = re.compile(NOISE_RE.pattern + r"|(^|/)(scripts|migrations|bench)/|(^|/)[^/]*\.config\.[cm]?[jt]s$|\.d\.ts$")
+# Where a design system documents itself: its docs, token files and theme config. Read as reference by ux.
+DS_REF_RE = re.compile(r"(^|/)(design[-_]?(system|library|tokens)|component[-_]?library|tokens|theme)/[^/]*(/[^/]*)*\."
+                       r"(md|mdx|json|css|scss|ts|js)$|(^|/)([^/]*\.)?tokens\.json$|(^|/)tailwind\.config\.[cm]?[jt]s$")
+CUSTOM_PROP_RE = re.compile(r"^\s*--[\w-]+\s*:", re.M)
+# Pages that exist for the developer, not the user: demos, harnesses, playgrounds.
+DEV_PAGE_RE = re.compile(r"(^|/)[^/]*(-demo|harness|playground)[^/]*\.[^/]+$|(^|/)(demos?|playgrounds?)/")
 TS_CONFIG_RE = re.compile(r"(^|/)[jt]sconfig[^/]*\.json$")
 BUNDLER_RE = re.compile(r"(^|/)(vite|webpack|rollup|next|nuxt|astro|svelte|metro|tsup|esbuild|rspack)\.config\.[cm]?[jt]s$")
 IGNORE_RE = re.compile(r"^-\s*`([^`]+)`\s*·\s*([A-Za-z0-9]+)\s*·")
@@ -201,8 +207,8 @@ def relevant_sets(files, repo_files):
     code = [f for f in files if _ext(f.path) in CODE_EXT and not f.path.endswith(".min.js") and not NOISE_RE.search(f.path)]
     src = [f for f in code if not is_test(f.path)]
     runtime = [f for f in src if not NON_RUNTIME_RE.search(f.path)]
-    ui = [f for f in runtime if _ext(f.path) in UI_EXT
-          or (_ext(f.path) in {".js", ".ts"} and (JSX_RE.search(f.text) or DOM_UI_RE.search(f.text)))]
+    ui = [f for f in runtime if not DEV_PAGE_RE.search(f.path) and (_ext(f.path) in UI_EXT
+          or (_ext(f.path) in {".js", ".ts"} and (JSX_RE.search(f.text) or DOM_UI_RE.search(f.text))))]
     # the graph spans the repo: a changed validator is on the boundary even when its route didn't change
     repo_src = [f for f in repo_files if _ext(f.path) in CODE_EXT and not is_test(f.path)]
     graph = import_graph(repo_src)
@@ -211,7 +217,7 @@ def relevant_sets(files, repo_files):
     wired = {p for p, deps in graph.items() if deps & hubs}
     # what a server or route file imports runs on the trust boundary too (validators, parsers, digests)
     boundary = {d for p, deps in graph.items() if is_boundary(p) for d in deps}
-    styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)]
+    styles = [f for f in files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path) and not DEV_PAGE_RE.search(f.path)]
     return {
         "perf": runtime + styles + [f for f in src if BUNDLER_RE.search(f.path)],  # animations; code splitting
         "security": [f for f in src if SECURITY_RE.search(f.text) or is_boundary(f.path) or f.path in boundary]
@@ -516,6 +522,14 @@ def load(root, paths):
     return infos
 
 
+def design_refs(repo_paths, repo_files):
+    """The design system's own docs and token files, plus stylesheets that declare many custom properties."""
+    refs = [p for p in repo_paths if DS_REF_RE.search(p) and not NOISE_RE.search(p)]
+    sheets = [f.path for f in repo_files if _ext(f.path) in STYLE_EXT and not NOISE_RE.search(f.path)
+              and len(CUSTOM_PROP_RE.findall(f.text)) >= 20]
+    return refs + [p for p in sheets if p not in refs]
+
+
 def find_manifests(repo_paths, under=Path("."), changed=None):
     """Dependency manifests anywhere in the repo that govern `under` (inside it or an ancestor of it).
     For a diff, only those in directories where a manifest changed: deps has nothing to say otherwise."""
@@ -638,7 +652,7 @@ def _file_line(p, tests):
 
 
 def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, contract, widened_note, tests_of=None,
-                graph_md=None):
+                graph_md=None, ds_refs=()):
     d = DIMS[dim]
     lines = [f"# /audit brief: {d.label}, slice {s['slice']} of {len(slices)}", "",
              f"- Dimension: {d.label}. Finding prefix `{d.prefix}`, slice index `{s['slice']}` "
@@ -670,6 +684,11 @@ def write_brief(run, root, stack, scope_desc, base, dim, s, slices, ignore, cont
         lines.append(f"Listed in `{side}`: read it first.")
     else:
         lines += [f"- {p}" for p in shown]
+    if dim == "ux" and ds_refs:
+        lines += ["", "## Design-system reference", "",
+                  "The system's own docs, tokens and token stylesheets. Read these first and check the files above "
+                  "against them, written rules included. Report only on your partition's files."]
+        lines += [f"- {p}" for p in ds_refs[:60]] + ([f"- (+{len(ds_refs) - 60} more)"] if len(ds_refs) > 60 else [])
     if ignore.get(dim):
         lines += ["", "## Accepted patterns: do not report", ""] + [e for _, e in ignore[dim]]
     lines += ["", contract]
@@ -738,6 +757,7 @@ def cmd_plan(tokens, cwd):
             graph_md = run / "graph.md"
             graph_md.write_text(facts)
 
+    ds_refs = design_refs(repo_paths, repo_files) if "ux" in dims else []
     ignore = {} if o["no_ignore"] else load_ignore(root)
     stack = detect_stack(root, repo_paths)
     contract = (PLUGIN_ROOT / "audit" / "contract.md").read_text().strip()
@@ -753,7 +773,7 @@ def cmd_plan(tokens, cwd):
             s.update(id=f"{DIMS[d].prefix}-{i}", dim=d, prefix=DIMS[d].prefix, slice=i)
         for s in dslices:
             brief = write_brief(run, root, stack, scope_desc, base, d, s, dslices, ignore, contract,
-                                notes[0] if mode == "diff" and d == "analytics" else None, tests_of, graph_md)
+                                notes[0] if mode == "diff" and d == "analytics" else None, tests_of, graph_md, ds_refs)
             agent_lines.append(f"AGENT {s['id']} | {DIMS[d].agent} | {model} | Audit {s['id']} | "
                                f"Read {brief} and follow it exactly.")
         slices += dslices
