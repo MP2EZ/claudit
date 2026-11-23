@@ -122,6 +122,22 @@ class RelevantSetsTest(unittest.TestCase):
         rel = audit.relevant_sets(files, files)
         self.assertEqual([f.path for f in rel["security"]], ["worker/ingest.ts", "src/admin/valid-save.ts"])
 
+    def test_security_takes_attack_surface_config_and_nothing_else_does(self):
+        files = [fi("public/_headers", 29, "Content-Security-Policy: default-src 'self'"),
+                 fi("wrangler.jsonc", 75, "{}"), fi(".github/workflows/deploy.yml", 52, "secrets.CF_TOKEN"),
+                 fi("ios/App/App/Info.plist", 76, "<plist>"), fi("src/sim/state.ts", 900, "export const s = 1")]
+        rel = audit.relevant_sets(files, files)
+        self.assertEqual([f.path for f in rel["security"]],
+                         ["public/_headers", "wrangler.jsonc", ".github/workflows/deploy.yml", "ios/App/App/Info.plist"])
+        for dim in ("perf", "arch", "bloat", "ts", "test"):
+            self.assertNotIn("wrangler.jsonc", [f.path for f in rel[dim]], dim)
+
+    def test_load_reads_security_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "wrangler.jsonc").write_text("{}\n")
+            (Path(d) / "notes.txt").write_text("x\n")
+            self.assertEqual([f.path for f in audit.load(Path(d), ["wrangler.jsonc", "notes.txt"])], ["wrangler.jsonc"])
+
     def test_bloat_includes_tests_perf_does_not(self):
         self.assertIn("src/lib/api.test.ts", self.paths("bloat"))
         self.assertNotIn("src/lib/api.test.ts", self.paths("perf"))
